@@ -1,0 +1,30 @@
+# Lista blanca de contactos autorizados.
+#
+# ESTA ES LA ÚNICA FUENTE DE VERDAD DE AUTORIZACIÓN: ningún envío (WhatsApp,
+# email, Messenger, iMessage) y ningún mensaje entrante se procesa si el
+# contrario no aparece aquí con activo: true. Ver orchestrator/contacts.py.
+#
+# 1. Copia este archivo a config/contacts.yaml (ese sí tiene tus datos
+#    reales y NUNCA se sube a git — ya está en .gitignore).
+# 2. Agrega un bloque por persona. Puedes dejar canales vacíos si esa
+#    persona no usa ese canal contigo.
+# 3. También puedes administrar esta lista con:
+#      python scripts/manage_contacts.py listar
+#      python scripts/manage_contacts.py agregar --nombre "..." --alias ... --whatsapp "+52..."
+#      python scripts/manage_contacts.py desactivar --alias ...
+
+contactos:
+  - nombre: "Nombre Apellido"
+    alias: "alias-corto"           # cómo te refieres a esta persona por voz
+    activo: true
+    canales:
+      whatsapp: "+521234567890"     # formato internacional, con '+'
+      email: "persona@correo.com"
+      messenger_id: ""              # PSID de Messenger, si aplica
+      imessage: "+521234567890"     # número o correo de Apple ID
+
+  # - nombre: "Otra Persona"
+  #   alias: "otra"
+  #   activo: false                 # false = queda excluida sin borrar el registro
+  #   canales:
+  #     whatsapp: "+520000000000"

@@ -1,0 +1,28 @@
+# Secrets y credenciales — NUNCA subir esto a git
+.env
+*.env
+credentials.json
+token.json
+whatsapp-bridge/auth_session/
+android-bridge/*.token
+
+# Lista de contactos real (PII) — solo se sube la plantilla .example
+config/contacts.yaml
+
+# Datos locales (DB, embeddings, sesiones)
+data/*
+!data/.gitkeep
+!data/README.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+npm-debug.log
+
+# OS
+.DS_Store

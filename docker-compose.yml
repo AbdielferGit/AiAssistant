@@ -1,0 +1,34 @@
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    env_file: .env
+    ports:
+      # bridge/server.py: /commands/* e /inbound/{canal} son para tu Android
+      # y deben quedar SOLO dentro de tu red Tailscale (no expongas este
+      # puerto abierto a internet). La excepción es /webhooks/whatsapp_cloud
+      # (si usas WHATSAPP_PROVIDER=cloud_api): Meta necesita llamarlo desde
+      # internet, así que ese path puntual sí necesita quedar público con
+      # HTTPS — ver MANUAL_CONEXION.md sección 3 (ngrok para pruebas, o un
+      # reverse proxy que solo exponga esa ruta en producción).
+      - "8090:8090"
+    volumes:
+      - ./data:/app/data
+      - ./credentials.json:/app/credentials.json:ro
+      - ./token.json:/app/token.json
+    restart: unless-stopped
+
+  # Solo necesario si WHATSAPP_PROVIDER=baileys en tu .env. Con el valor por
+  # defecto (cloud_api) el orchestrator llama a la WhatsApp Cloud API
+  # directamente y este servicio no hace falta — puedes no levantarlo:
+  #   docker compose up -d orchestrator
+  whatsapp-bridge:
+    build:
+      context: ./whatsapp-bridge
+    env_file: .env
+    ports:
+      - "4001:4001"
+    volumes:
+      - ./whatsapp-bridge/auth_session:/app/auth_session
+    restart: unless-stopped
