@@ -33,17 +33,24 @@ rechazarán automáticamente.
    ```bash
    cp config/contacts.yaml.example config/contacts.yaml
    ```
-2. Agrega tus contactos con el CLI (más fácil que editar YAML a mano):
+2. Agrega tus contactos con el CLI (más fácil que editar YAML a mano). Los
+   medios (`--medio nombre=valor`) son libres — pon solo los que tengas a
+   mano ahora:
    ```bash
    python scripts/manage_contacts.py agregar \
      --nombre "Juan Pérez" --alias juan \
-     --whatsapp "+521234567890" --email "juan@correo.com"
+     --medio whatsapp=+521234567890 --medio email=juan@correo.com
    ```
 3. Verifica:
    ```bash
    python scripts/manage_contacts.py listar
    ```
-4. Para retirar autorización a alguien sin borrar su historial de estilo:
+4. Agrega medios nuevos más adelante, progresivamente, sin recrear el
+   contacto (ej. cuando actives Telegram o iMessage para esa persona):
+   ```bash
+   python scripts/manage_contacts.py agregar-medio --alias juan --medio imessage=+521234567890
+   ```
+5. Para retirar autorización a alguien sin borrar su historial de estilo:
    ```bash
    python scripts/manage_contacts.py desactivar --alias juan
    ```

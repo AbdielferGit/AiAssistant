@@ -25,7 +25,15 @@ import yaml
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "contacts.yaml"
 
-CANALES_VALIDOS = {"whatsapp", "email", "messenger_id", "imessage"}
+# Deliberadamente NO hay una lista fija de canales/medios válidos: cada
+# contacto define en config/contacts.yaml los medios de comunicación que
+# tengan sentido para él (whatsapp, email, messenger_id, imessage, o
+# cualquier medio nuevo que agregues después — sms, telegram, slack...) sin
+# tener que tocar este archivo ni el resto del código. Un tool de canal
+# (orchestrator/tools/*.py) solo sabe actuar sobre los medios para los que
+# existe una implementación; los demás quedan guardados en el contacto,
+# listos para cuando construyas ese tool.
+_PARECE_TELEFONO = re.compile(r"\+?\d{7,15}")
 
 
 class ContactoNoAutorizado(Exception):
@@ -41,12 +49,16 @@ class Contacto:
 
 
 def _normalizar(canal: str, identificador: str) -> str:
+    """Normaliza por FORMA del valor, no por el nombre del canal — así
+    cualquier medio nuevo (sms, telegram, lo que sea) se normaliza bien sin
+    tener que enseñarle a esta función el nombre de cada canal nuevo."""
     identificador = (identificador or "").strip()
-    if canal == "email" or canal == "messenger_id":
-        return identificador.lower()
-    # whatsapp / imessage: solo dígitos y el '+' inicial, para que
-    # "+52 123 456 7890" y "+521234567890" se traten como lo mismo.
-    return re.sub(r"[^\d+]", "", identificador)
+    solo_digitos_y_mas = re.sub(r"[^\d+]", "", identificador)
+    if _PARECE_TELEFONO.fullmatch(solo_digitos_y_mas):
+        # "+52 123 456 7890" y "+521234567890" se tratan como lo mismo.
+        return solo_digitos_y_mas
+    # correos, @usuarios, IDs de app, etc.
+    return identificador.lower()
 
 
 def listar_todos() -> list[Contacto]:
@@ -59,9 +71,9 @@ def listar_todos() -> list[Contacto]:
     datos = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
     contactos = []
     for c in datos.get("contactos", []):
-        canal_map = {
-            k: v for k, v in (c.get("canales") or {}).items() if k in CANALES_VALIDOS and v
-        }
+        # Cualquier clave bajo "canales" cuenta — no hay lista fija, así
+        # puedes agregar medios progresivamente sin tocar código.
+        canal_map = {k: v for k, v in (c.get("canales") or {}).items() if v}
         contactos.append(
             Contacto(
                 nombre=c.get("nombre", "(sin nombre)"),
@@ -84,8 +96,6 @@ def _indice_activos() -> dict[tuple[str, str], Contacto]:
 
 
 def buscar_contacto(canal: str, identificador: str) -> Contacto | None:
-    if canal not in CANALES_VALIDOS:
-        return None
     return _indice_activos().get((canal, _normalizar(canal, identificador)))
 
 

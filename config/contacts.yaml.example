@@ -1,16 +1,23 @@
 # Lista blanca de contactos autorizados.
 #
-# ESTA ES LA ÚNICA FUENTE DE VERDAD DE AUTORIZACIÓN: ningún envío (WhatsApp,
-# email, Messenger, iMessage) y ningún mensaje entrante se procesa si el
-# contrario no aparece aquí con activo: true. Ver orchestrator/contacts.py.
+# ESTA ES LA ÚNICA FUENTE DE VERDAD DE AUTORIZACIÓN: ningún envío ni ningún
+# mensaje entrante se procesa si el contrario no aparece aquí con
+# activo: true. Ver orchestrator/contacts.py.
+#
+# Los medios bajo "canales" son LIBRES: no hay una lista fija de nombres
+# válidos. Define solo los que tengan sentido para cada persona al
+# crearla, y agrega más progresivamente según necesites (whatsapp, email,
+# messenger_id, imessage, o algo nuevo como telegram, sms, slack...) — un
+# medio nuevo solo empieza a usarse de verdad cuando exista su tool en
+# orchestrator/tools/*.py, pero puedes registrar el dato desde ya.
 #
 # 1. Copia este archivo a config/contacts.yaml (ese sí tiene tus datos
 #    reales y NUNCA se sube a git — ya está en .gitignore).
-# 2. Agrega un bloque por persona. Puedes dejar canales vacíos si esa
-#    persona no usa ese canal contigo.
-# 3. También puedes administrar esta lista con:
+# 2. Administra la lista con el CLI (más fácil que editar YAML a mano):
 #      python scripts/manage_contacts.py listar
-#      python scripts/manage_contacts.py agregar --nombre "..." --alias ... --whatsapp "+52..."
+#      python scripts/manage_contacts.py agregar --nombre "..." --alias ... \
+#          --medio whatsapp=+52... --medio email=...
+#      python scripts/manage_contacts.py agregar-medio --alias ... --medio telegram=@...
 #      python scripts/manage_contacts.py desactivar --alias ...
 
 contactos:
@@ -20,8 +27,10 @@ contactos:
     canales:
       whatsapp: "+521234567890"     # formato internacional, con '+'
       email: "persona@correo.com"
-      messenger_id: ""              # PSID de Messenger, si aplica
-      imessage: "+521234567890"     # número o correo de Apple ID
+      # Agrega aquí lo que necesites, cuando lo necesites, ej.:
+      # messenger_id: "PSID de Messenger"
+      # imessage: "+521234567890 o correo de Apple ID"
+      # telegram: "@usuario"
 
   # - nombre: "Otra Persona"
   #   alias: "otra"
