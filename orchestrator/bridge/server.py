@@ -22,7 +22,7 @@ from orchestrator.config import settings
 from orchestrator.memory.inbound_tracker import registrar_inbound
 
 log = logging.getLogger("bridge.server")
-app = FastAPI(title="AiAsistant phone bridge")
+app = FastAPI(title="AiAssistant phone bridge")
 
 _cola: asyncio.Queue[dict] = asyncio.Queue()
 _resultados: dict[str, asyncio.Future] = {}

@@ -21,7 +21,7 @@ POLL_INTERVAL_SEGUNDOS = 3
 def ejecutar_accion(accion: str, parametros: dict) -> dict:
     if accion == "notificar":
         subprocess.run(
-            ["termux-notification", "--title", parametros.get("titulo", "AiAsistant"),
+            ["termux-notification", "--title", parametros.get("titulo", "AiAssistant"),
              "--content", parametros.get("texto", "")],
             check=False,
         )

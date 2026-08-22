@@ -13,7 +13,7 @@ como tarea periódica en el VPS:
 ```bash
 crontab -e
 # Sincroniza cada hora:
-0 * * * * cd /ruta/AiAsistant && .venv/bin/python scripts/sync_to_drive.py >> sync.log 2>&1
+0 * * * * cd /ruta/AiAssistant && .venv/bin/python scripts/sync_to_drive.py >> sync.log 2>&1
 ```
 
 Esto es un **respaldo/export**, no una base de datos multi-escritor. Si en

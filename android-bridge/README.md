@@ -33,7 +33,7 @@ AutoRemote, disparándolo con `disparar_tasker`.
 2. Crea `~/.termux/boot/start-listener.sh`:
    ```bash
    #!/data/data/com.termux/files/usr/bin/sh
-   cd ~/AiAsistant/android-bridge
+   cd ~/AiAssistant/android-bridge
    python scripts/listener.py >> listener.log 2>&1
    ```
 3. Dale permisos de ejecución: `chmod +x ~/.termux/boot/start-listener.sh`.

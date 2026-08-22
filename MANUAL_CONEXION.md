@@ -64,7 +64,7 @@ git** (ya está en `.gitignore`). Si despliegas en el VPS, cópialo ahí por
 ## 1. Google Cloud (Gmail + Drive)
 
 1. Ve a https://console.cloud.google.com/ y crea un proyecto nuevo, ej.
-   "AiAsistant".
+   "AiAssistant".
 2. Menú → **APIs & Services → Library** → activa:
    - Gmail API
    - Google Drive API
@@ -77,7 +77,7 @@ git** (ya está en `.gitignore`). Si despliegas en el VPS, cópialo ahí por
      (ya está en `.gitignore`, no se sube nunca).
 5. Copia el `client_id` y `client_secret` de ese JSON a tu `.env`
    (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`).
-6. En Drive, crea una carpeta llamada "AiAsistant-DB", ábrela y copia el ID
+6. En Drive, crea una carpeta llamada "AiAssistant-DB", ábrela y copia el ID
    que aparece en la URL (`.../folders/ESTE_ID`) → pégalo en
    `GOOGLE_DRIVE_DB_FOLDER_ID` de tu `.env`.
 7. La primera vez que corras el orchestrator te abrirá el navegador para
@@ -109,7 +109,7 @@ Guía detallada de referencia: `scripts/setup_google_cloud.md`.
 6. Clona el repo en el VPS y copia tu `.env` (nunca lo subas a git; cópialo
    por `scp` o pégalo directo en el servidor):
    ```bash
-   git clone <tu-repo> && cd AiAsistant
+   git clone <tu-repo> && cd AiAssistant
    docker compose up -d
    ```
 
@@ -129,7 +129,7 @@ mandar texto libre a números que **te hayan escrito primero** en las
 últimas 24 h, y solo a los "testers" que agregues en el paso 4.
 
 1. Ve a https://developers.facebook.com/apps → **Crear app** → tipo
-   "Business" → nombre, ej. "AiAsistant".
+   "Business" → nombre, ej. "AiAssistant".
 2. En el dashboard de la app, agrega el producto **WhatsApp** ("Set up").
 3. En **WhatsApp → API Setup** verás automáticamente un **número de
    prueba** (Test number) ya asignado por Meta, junto con:
@@ -188,8 +188,8 @@ en tu `.env` y:
    ```
 2. Copia (o clona) la carpeta `android-bridge/` al celular, ej.:
    ```bash
-   git clone <tu-repo> AiAsistant
-   cd AiAsistant/android-bridge
+   git clone <tu-repo> AiAssistant
+   cd AiAssistant/android-bridge
    pip install -r requirements.txt
    ```
 3. Edita `scripts/listener.py` (o exporta variables de entorno) con:

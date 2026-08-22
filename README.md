@@ -1,4 +1,4 @@
-# AiAsistant
+# AiAssistant
 
 Asistente personal por voz, entrenable, capaz de ejecutar acciones en tu Mac
 y en tu celular Android, y de redactar mensajes con tu propio estilo.
@@ -12,7 +12,7 @@ y en tu celular Android, y de redactar mensajes con tu propio estilo.
 ## Estructura del repo
 
 ```
-AiAsistant/
+AiAssistant/
 ├── MANUAL_CONEXION.md       # Manual paso a paso (Mac + Android + APIs)
 ├── docker-compose.yml       # Levanta orchestrator + puente de WhatsApp
 ├── .env.example             # Variables de entorno necesarias

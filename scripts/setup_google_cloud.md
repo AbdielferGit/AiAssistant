@@ -2,21 +2,21 @@
 
 Referencia ampliada de `MANUAL_CONEXION.md` sección 1.
 
-1. https://console.cloud.google.com/projectcreate → nombre "AiAsistant".
+1. https://console.cloud.google.com/projectcreate → nombre "AiAssistant".
 2. **APIs & Services → Library** → busca y activa, una por una:
    - Gmail API
    - Google Drive API
    - Google Calendar API
 3. **APIs & Services → OAuth consent screen**
    - User type: External.
-   - App name: "AiAsistant" (uso interno, no necesita pasar revisión de
+   - App name: "AiAssistant" (uso interno, no necesita pasar revisión de
      Google mientras solo tú lo uses como "test user").
    - Scopes: agrega `gmail.send`, `drive.file`, `calendar.events` (los
      mismos definidos en `orchestrator/tools/google_workspace.py`).
    - Test users: agrega tu propio correo (abdielfer@gmail.com).
 4. **APIs & Services → Credentials → + Create Credentials → OAuth client ID**
    - Application type: Desktop app.
-   - Nombre: "AiAsistant CLI".
+   - Nombre: "AiAssistant CLI".
    - Descarga el JSON → guárdalo como `credentials.json` en la raíz del repo.
 5. Primera ejecución: `python -m orchestrator.main` (o cualquier script que
    llame a `google_workspace._get_credentials()`) abrirá el navegador para
