@@ -9,7 +9,7 @@
       │                                        notificaciones/Tasker/SMS
       ▼                                                ▲
 ┌─────────────────────────────────────────────────────┴───┐
-│              orchestrator/ (Python, Claude Agent SDK)     │
+│           orchestrator/ (Python, SDK oficial de Anthropic)│
 │  - main.py: loop del agente, decide qué "tool" llamar     │
 │  - tools/: gmail, drive, whatsapp, messenger, macOS        │
 │  - memory/: estilo de escritura (RAG) + contexto           │
@@ -27,7 +27,7 @@
 | Componente | Dónde corre | Tecnología |
 |---|---|---|
 | Captura de voz (wake word + STT) | Mac (o servidor si migras) | Porcupine + whisper.cpp |
-| Orquestador (el "cerebro") | Servidor / Mac | Python + Claude Agent SDK |
+| Orquestador (el "cerebro") | Servidor / Mac | Python + SDK oficial de Anthropic (`anthropic`), loop de tool-use manual, multi-agente con enrutamiento automático (ver `orchestrator/agents/` y `orchestrator/router.py`) |
 | Gmail / Drive | Servidor | Google API oficial (OAuth) |
 | WhatsApp | Servidor (proceso Node siempre activo) | Baileys (no oficial — ver advertencia abajo) |
 | Messenger | Servidor | Meta Messenger Platform (oficial, solo Páginas — ver `orchestrator/tools/messenger.py`) |

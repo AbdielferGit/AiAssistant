@@ -236,8 +236,12 @@ obtener un `MESSENGER_PAGE_ACCESS_TOKEN`.
 
 ```bash
 source .venv/bin/activate
-python orchestrator/main.py
+python -m orchestrator.main
 ```
+
+(Corre siempre como módulo con `-m`, no como script suelto — así Python
+agrega la raíz del repo a `sys.path` y los imports `orchestrator.*`
+funcionan. Para el Analista de CEO: `python -m orchestrator.main --agente ceo`.)
 
 Di (o escribe, si todavía no conectaste el STT): *"Redacta un WhatsApp para
 [contacto] confirmando la reunión de mañana"*. El asistente debe:

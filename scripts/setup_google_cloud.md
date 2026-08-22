@@ -18,7 +18,7 @@ Referencia ampliada de `MANUAL_CONEXION.md` sección 1.
    - Application type: Desktop app.
    - Nombre: "AiAsistant CLI".
    - Descarga el JSON → guárdalo como `credentials.json` en la raíz del repo.
-5. Primera ejecución: `python orchestrator/main.py` (o cualquier script que
+5. Primera ejecución: `python -m orchestrator.main` (o cualquier script que
    llame a `google_workspace._get_credentials()`) abrirá el navegador para
    que autorices — el token queda cacheado en `token.json`.
 

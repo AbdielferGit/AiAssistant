@@ -22,6 +22,7 @@ def _require(name: str, default: str | None = None) -> str:
 @dataclass(frozen=True)
 class Settings:
     anthropic_api_key: str
+    anthropic_model: str
     google_client_id: str
     google_client_secret: str
     google_drive_db_folder_id: str
@@ -42,6 +43,7 @@ class Settings:
     def load(cls) -> "Settings":
         return cls(
             anthropic_api_key=_require("ANTHROPIC_API_KEY"),
+            anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5"),
             google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
             google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
             google_drive_db_folder_id=os.getenv("GOOGLE_DRIVE_DB_FOLDER_ID", ""),

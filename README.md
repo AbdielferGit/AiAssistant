@@ -18,10 +18,15 @@ AiAsistant/
 ├── .env.example             # Variables de entorno necesarias
 ├── config/
 │   └── contacts.yaml.example # Plantilla de la lista blanca de contactos
-├── orchestrator/            # Cerebro del asistente (Python, Claude Agent SDK)
-│   ├── main.py               # Loop principal del agente
+├── orchestrator/            # Cerebro del asistente (Python, SDK oficial de Anthropic)
+│   ├── main.py               # Loop genérico de tool-use — no conoce ningún agente en particular
+│   ├── router.py              # Antes de responder, elige (con Haiku) qué agente le toca al mensaje
 │   ├── config.py              # Carga de configuración/.env
 │   ├── contacts.py            # Lista blanca — autoriza envío/recepción en ambas direcciones
+│   ├── agents/                 # Agentes — se autodescubren, no hace falta tocar el orchestrator
+│   │   ├── base.py               # Clase plantilla Agent_0 — instánciala para crear un agente nuevo
+│   │   ├── personal_assistant.py # Agente "asistente" (predeterminado): envía, redacta, agenda
+│   │   └── ceo_analyst.py        # Agente "ceo": Analista de CEO, sin tools (puro análisis)
 │   ├── tools/                 # "Herramientas" que el LLM puede invocar
 │   │   ├── google_workspace.py  # Gmail + Drive
 │   │   ├── whatsapp.py          # Llama al puente de WhatsApp (Node/Baileys)
@@ -38,6 +43,17 @@ AiAsistant/
 ├── scripts/                  # Setup de Google Cloud, sync a Drive
 └── data/                     # DB local (LanceDB/SQLite) — no se sube a git
 ```
+
+## Agregar un agente nuevo
+
+No se toca `main.py` ni el registro — solo crea un archivo en
+`orchestrator/agents/` que instancie `Agent_0` (ver el docstring de
+[`orchestrator/agents/base.py`](orchestrator/agents/base.py) para un
+ejemplo completo). El paquete lo autodescubre la próxima vez que corras
+`python -m orchestrator.main`, y el enrutador ([`orchestrator/router.py`](orchestrator/router.py))
+empieza a considerarlo automáticamente para cada mensaje según su
+`descripcion_enrutador` — no hace falta seleccionarlo a mano salvo que
+quieras fijarlo con `--agente <id>`.
 
 ## Estado actual
 

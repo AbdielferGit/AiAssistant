@@ -1,156 +1,153 @@
 """
-Loop principal del agente.
+Chatbot local — loop principal por terminal, agnóstico al agente.
 
-Usa el Claude Agent SDK para registrar "tools" (acciones) y dejar que el
-modelo decida cuándo invocarlas. La pieza no-negociable de este archivo es
-`requiere_confirmacion`: cualquier tool marcada como irreversible se
-muestra como borrador y espera un "sí" explícito antes de ejecutarse.
+Usa el SDK oficial de Anthropic (`anthropic`) con un loop de tool-use
+manual, en vez del Claude Agent SDK (ese depende de tener instalado el CLI
+de Claude Code como subproceso — no queremos esa dependencia en un
+contenedor corriendo en un VPS).
 
-NOTA: la API exacta del `claude-agent-sdk` evoluciona — si al instalar la
-versión más reciente los nombres de clases/decoradores no coinciden,
-ajusta las llamadas de import/registro según la documentación instalada
-(`python -c "import claude_agent_sdk; help(claude_agent_sdk)"`). La forma
-general del flujo (tools + confirmación humana) se mantiene igual.
+Este archivo no sabe nada de un agente en particular. Por defecto, ANTES
+de responder cada mensaje consulta al enrutador (`orchestrator/router.py`)
+para decidir cuál de los agentes registrados en `orchestrator/agents/`
+debe atenderlo — y solo cae en el agente genérico (el marcado como
+predeterminado) cuando ninguno especializado encaja. Agregar un agente
+nuevo no requiere tocar este archivo: ver `orchestrator/agents/base.py`.
+
+Uso (siempre como módulo, desde la raíz del repo — `python orchestrator/main.py`
+directo NO funciona: Python no agrega la raíz del repo a sys.path cuando
+corres un script suelto, solo la carpeta que lo contiene):
+    python -m orchestrator.main                  # enruta cada turno automáticamente
+    python -m orchestrator.main --agente ceo      # fija un agente para toda la sesión (sin enrutar)
+    python -m orchestrator.main --listar-agentes
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
+import inspect
+import json
 import logging
 
-from claude_agent_sdk import ClaudeAgent, tool  # ver nota arriba si falla el import
+import anthropic
 
-from orchestrator import contacts
+from orchestrator.agents import AGENTES, Agent_0
 from orchestrator.config import settings
-from orchestrator.memory.style_profile import buscar_ejemplos_de_estilo
-from orchestrator.tools import google_workspace, macos_actions, messenger, whatsapp
+from orchestrator.router import elegir_agente
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("orchestrator")
 
-# Tools cuya ejecución es irreversible: SIEMPRE piden confirmación explícita
-# antes de correr, sin excepción. No relajar esta lista sin pensarlo dos veces.
-TOOLS_IRREVERSIBLES = {
-    "enviar_whatsapp",
-    "enviar_email",
-    "enviar_messenger",
-    "publicar_contenido",
-}
+MAX_TOKENS = 1536
 
 
-@tool(name="redactar_borrador")
-async def redactar_borrador(destinatario: str, tema: str, canal: str) -> dict:
-    """Genera un borrador de mensaje usando ejemplos reales de cómo el
-    usuario le escribe a ese destinatario (o en ese canal)."""
-    ejemplos = buscar_ejemplos_de_estilo(destinatario=destinatario, canal=canal, k=6)
-    return {
-        "destinatario": destinatario,
-        "tema": tema,
-        "canal": canal,
-        "ejemplos_de_estilo": ejemplos,
-        "instruccion": (
-            "Redacta el mensaje usando el tono, largo y vocabulario que "
-            "reflejan estos ejemplos. No inventes hechos que no te dieron."
-        ),
-    }
+async def _ejecutar_tool(agente: Agent_0, nombre: str, args: dict) -> dict:
+    if nombre in agente.tools_irreversibles:
+        print(f"\n⚠️  El agente quiere ejecutar una acción IRREVERSIBLE:")
+        print(f"    {nombre}({json.dumps(args, ensure_ascii=False, indent=2)})")
+        respuesta = await asyncio.to_thread(input, "¿Confirmas? (sí/no): ")
+        if respuesta.strip().lower() not in ("si", "sí", "s", "yes", "y"):
+            return {"status": "cancelado_por_usuario"}
+
+    func = agente.tool_funcs.get(nombre)
+    if func is None:
+        return {"status": "error", "detalle": f"Tool desconocida: {nombre}"}
+
+    resultado = func(**args)
+    if inspect.isawaitable(resultado):
+        resultado = await resultado
+    return resultado
 
 
-@tool(name="enviar_whatsapp")
-async def enviar_whatsapp(numero: str, texto: str) -> dict:
-    """Envía un mensaje de WhatsApp. IRREVERSIBLE — requiere confirmación
-    previa del usuario, gestionada en el loop principal."""
-    return await whatsapp.enviar(numero=numero, texto=texto)
+async def _correr_turno(client: anthropic.AsyncAnthropic, agente: Agent_0, mensajes: list[dict]) -> None:
+    """Corre el loop de tool-use de UN turno con el agente elegido, hasta
+    que responda solo con texto (sin más tool_use pendientes). Modifica
+    `mensajes` in-place para que el historial se comparta entre agentes."""
+    while True:
+        respuesta = await client.messages.create(
+            model=settings.anthropic_model,
+            max_tokens=MAX_TOKENS,
+            system=agente.system_prompt,
+            tools=agente.tool_schemas,
+            messages=mensajes,
+        )
+        mensajes.append({"role": "assistant", "content": respuesta.content})
+
+        texto = " ".join(b.text for b in respuesta.content if b.type == "text").strip()
+        if texto:
+            print(f"\n{agente.nombre}: {texto}\n")
+
+        llamadas = [b for b in respuesta.content if b.type == "tool_use"]
+        if not llamadas:
+            return
+
+        resultados = []
+        for llamada in llamadas:
+            log.info("Ejecutando tool %s(%s)", llamada.name, llamada.input)
+            resultado = await _ejecutar_tool(agente, llamada.name, llamada.input)
+            resultados.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": llamada.id,
+                    "content": json.dumps(resultado, ensure_ascii=False),
+                }
+            )
+        mensajes.append({"role": "user", "content": resultados})
 
 
-@tool(name="enviar_email")
-async def enviar_email(destinatario: str, asunto: str, cuerpo: str) -> dict:
-    """Envía un correo por Gmail. IRREVERSIBLE."""
-    return google_workspace.enviar_email(destinatario, asunto, cuerpo)
+async def run(agente_fijo: Agent_0 | None) -> None:
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    mensajes: list[dict] = []
+
+    if agente_fijo:
+        print(f"[{agente_fijo.nombre}] listo (fijo, sin enrutar). Ctrl+C para salir.\n")
+    else:
+        print(
+            f"Listo — enruto cada mensaje al agente que le toque "
+            f"({', '.join(a.nombre for a in AGENTES.values())}). Ctrl+C para salir.\n"
+        )
+
+    while True:
+        try:
+            texto_usuario = await asyncio.to_thread(input, "Tú: ")
+        except (EOFError, KeyboardInterrupt):
+            print("\nHasta luego.")
+            return
+        texto_usuario = texto_usuario.strip()
+        if not texto_usuario:
+            continue
+
+        mensajes.append({"role": "user", "content": texto_usuario})
+
+        if agente_fijo:
+            agente = agente_fijo
+        else:
+            agente = await elegir_agente(texto_usuario, AGENTES)
+            print(f"[enrutado a: {agente.nombre}]")
+
+        await _correr_turno(client, agente, mensajes)
 
 
-@tool(name="enviar_messenger")
-async def enviar_messenger(destinatario_id: str, texto: str) -> dict:
-    """Envía un mensaje de Messenger. IRREVERSIBLE — ver advertencia en
-    orchestrator/tools/messenger.py antes de activar en producción."""
-    return await messenger.enviar(destinatario_id, texto)
-
-
-@tool(name="crear_evento_calendario")
-async def crear_evento_calendario(titulo: str, inicio_iso: str, fin_iso: str) -> dict:
-    """Crea un evento en Google Calendar. Reversible (se puede borrar)."""
-    return google_workspace.crear_evento(titulo, inicio_iso, fin_iso)
-
-
-@tool(name="abrir_app_o_archivo_mac")
-async def abrir_app_o_archivo_mac(nombre: str) -> dict:
-    """Abre una aplicación o archivo en la Mac. Reversible."""
-    return macos_actions.abrir(nombre)
-
-
-@tool(name="listar_contactos_autorizados")
-async def listar_contactos_autorizados() -> dict:
-    """Devuelve los contactos de la lista blanca (config/contacts.yaml).
-    Úsala para saber a quién SÍ puedes escribirle antes de intentar
-    redactar o enviar algo — no asumas que un nombre que el usuario
-    mencionó por voz está autorizado sin confirmarlo aquí."""
-    contactos = contacts.listar_todos()
-    return {
-        "contactos": [
-            {"nombre": c.nombre, "alias": c.alias, "activo": c.activo, "canales": list(c.canales)}
-            for c in contactos
-        ]
-    }
-
-
-@tool(name="ejecutar_accion_android")
-async def ejecutar_accion_android(accion: str, parametros: dict) -> dict:
-    """Encola una acción para que el bridge de Android la ejecute
-    (notificación, disparar un Tasker, leer info local, etc.)."""
-    from orchestrator.bridge.server import encolar_comando
-
-    return await encolar_comando(accion=accion, parametros=parametros)
-
-
-SYSTEM_PROMPT = """\
-Eres el asistente personal del usuario. Puedes redactar mensajes que suenen
-exactamente como él (usa siempre `redactar_borrador` antes de enviar algo) y
-ejecutar acciones en su Mac y su Android.
-
-Regla estricta #1 — lista blanca de contactos: SOLO puedes enviar mensajes
-(WhatsApp, email, Messenger, iMessage) a personas que estén en la lista
-blanca activa. Si tienes duda sobre si alguien está autorizado, llama a
-`listar_contactos_autorizados` antes de redactar o enviar nada. Cada tool
-de envío ya rechaza por su cuenta a quien no esté en la lista (verás
-`status: "rechazado"` en la respuesta) — si eso pasa, informa al usuario en
-vez de intentar otra vía para llegar a esa persona.
-
-Regla estricta #2 — confirmación humana: para CUALQUIER acción irreversible
-(enviar mensajes, publicar, comprar) primero muestra el borrador/resumen
-exacto de lo que vas a hacer y espera una confirmación explícita del
-usuario ("sí", "envíalo", "confirmado"). Nunca asumas confirmación
-implícita.
-"""
-
-
-async def run() -> None:
-    agent = ClaudeAgent(
-        api_key=settings.anthropic_api_key,
-        system_prompt=SYSTEM_PROMPT,
-        tools=[
-            redactar_borrador,
-            listar_contactos_autorizados,
-            enviar_whatsapp,
-            enviar_email,
-            enviar_messenger,
-            crear_evento_calendario,
-            abrir_app_o_archivo_mac,
-            ejecutar_accion_android,
-        ],
-        confirm_before=TOOLS_IRREVERSIBLES,
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--agente", default=None, choices=sorted(AGENTES),
+        help="Fija un agente para toda la sesión (se salta el enrutador). Por defecto: enruta cada mensaje.",
     )
-    log.info("Orchestrator listo. Escribe una instrucción (Ctrl+C para salir).")
-    async for turno in agent.chat_loop_stdin():
-        log.info("→ %s", turno)
+    parser.add_argument(
+        "--listar-agentes", action="store_true",
+        help="Muestra los agentes disponibles y sale.",
+    )
+    args = parser.parse_args()
+
+    if args.listar_agentes:
+        for id_, agente in AGENTES.items():
+            predeterminado = " (predeterminado)" if agente.es_predeterminado else ""
+            print(f"{id_}: {agente.nombre}{predeterminado}")
+        return
+
+    agente_fijo = AGENTES[args.agente] if args.agente else None
+    asyncio.run(run(agente_fijo))
 
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    main()
