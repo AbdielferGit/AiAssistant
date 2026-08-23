@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-import lancedb
-
 from orchestrator.config import settings
 
 TABLE_NAME = "mensajes_estilo"
@@ -26,6 +24,15 @@ class Mensaje(TypedDict):
 
 
 def _conectar():
+    # Import perezoso a propósito: lancedb arranca un hilo en background al
+    # importarse (lancedb.background_loop.BackgroundEventLoop), lo que falla
+    # con "RuntimeError: can't start new thread" en hostings compartidos con
+    # límites de hilos/procesos estrictos (ej. CageFS en cPanel/Bluehost).
+    # Importarlo aquí, no a nivel de módulo, evita pagar ese costo — y ese
+    # riesgo — para cualquier proceso que nunca llegue a usar la memoria de
+    # estilo (como orchestrator/web/app.py sirviendo solo login+chat).
+    import lancedb
+
     return lancedb.connect(settings.vector_db_path)
 
 

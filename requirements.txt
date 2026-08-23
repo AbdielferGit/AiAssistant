@@ -6,6 +6,10 @@ google-api-python-client>=2.140.0
 google-auth-httplib2>=0.2.0
 google-auth-oauthlib>=1.2.0
 google-auth>=2.34.0
+# El oauthlib del sistema en algunos hostings (ej. Bluehost/Python 3.9) es
+# viejo y no tiene SIGNATURE_RSA — fuerza una versión moderna en el
+# virtualenv/user site-packages para que google-auth-oauthlib no choque con él.
+oauthlib>=3.2.0
 lancedb>=0.13.0
 httpx>=0.27.0
 pydantic>=2.8.0

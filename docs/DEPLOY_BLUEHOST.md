@@ -1,5 +1,18 @@
 # Desplegar la versión web en Bluehost
 
+> **Actualización tras el primer intento real (22 ago 2026):** en la
+> cuenta "Online Store" concreta que usamos, **Apache rechaza los
+> directivos de Passenger** (`.htaccess: Invalid command 'PassengerAppRoot',
+> perhaps misspelled or defined by a module not included in the server
+> configuration` — visible en cPanel → Metrics → Errors). Es decir:
+> `mod_passenger` NO está cargado en este servidor, aunque la propia UI de
+> "Application Manager" de Bluehost deje registrar la app y corra `pip
+> install` sin quejarse (usa `pip install --user` con el Python del
+> sistema, no un virtualenv — otra señal de que esta skin de Bluehost es
+> más limitada que un cPanel/WHM estándar con Passenger real). Ver la
+> sección "Qué SÍ funcionó" abajo para lo que quedó probado end-to-end, y
+> "Alternativas" para las opciones reales de aquí en más.
+
 Guía paso a paso para publicar `orchestrator/web/` (login por invitación +
 chat) en el hosting compartido "Online Store" de Bluehost que ya tienes,
 usando el dominio `getaiassistant.app` (comprado — ver historial de esta
@@ -125,6 +138,46 @@ Bluehost, esto normalmente ya está conectado (mismo panel). Si no:
   vez de bloquear nada.
 - Prueba con un correo de Google que NO esté invitado → debe rechazar el
   login con 403.
+
+## Qué SÍ quedó probado (22 ago 2026)
+
+- El dominio `getaiassistant.app` está conectado a este hosting como sitio
+  propio ("AiAssistant" en Websites), con document root
+  `~/public_html/website_87943c0c`.
+- Todo `requirements.txt` instala limpio con `pip3.9 install --user` en el
+  Python 3.9.25 del servidor (incluyendo `lancedb`).
+- Hubo que fijar `oauthlib>=3.2.0` explícitamente (ya está en
+  requirements.txt) — el `oauthlib` del sistema (3.1.1) no expone
+  `SIGNATURE_RSA`, rompe la cadena `google-auth-oauthlib`.
+- Se encontró y corrigió un bug real: `orchestrator/memory/vector_store.py`
+  importaba `lancedb` a nivel de módulo, y `lancedb` arranca un hilo en
+  background al importarse — en este hosting eso revienta con
+  `RuntimeError: can't start new thread` (límite de hilos/procesos de
+  CageFS). Ya está resuelto con un import perezoso dentro de `_conectar()`.
+- Con todo lo anterior, `python3.9 -m uvicorn orchestrator.web.app:app`
+  corriendo standalone en el propio servidor responde `HTTP 200`
+  correctamente — **el código en sí funciona en este hosting**. El único
+  bloqueador es que Apache no tiene `mod_passenger` para exponerlo por
+  `https://getaiassistant.app`.
+- El `.env`, `config/contacts.yaml` y `config/invited_users.yaml` reales ya
+  quedaron creados en el servidor (con datos mínimos: solo tu correo/tu
+  contacto). Falta rellenar `GOOGLE_CLIENT_ID` cuando se cree el OAuth
+  client "Web application" (paso 6 de esta guía).
+
+## Alternativas ahora que Passenger no está disponible aquí
+
+1. **Pedir a soporte de Bluehost que habilite Passenger** para esta cuenta
+   (mencionar el error exacto de arriba). Si lo activan, el resto de esta
+   guía (pasos 1–8) debería funcionar tal cual, ya con el código validado.
+2. **Mover solo el backend Python a un host que sí lo soporte de fábrica**
+   (Render, Railway, Fly.io — capas gratuitas o casi gratuitas) y dejar que
+   `getaiassistant.app` (o un subdominio `api.getaiassistant.app`) apunte
+   ahí por DNS/CNAME. Bluehost seguiría sirviendo el dominio; el cómputo
+   viviría afuera.
+3. **CGI/FastCGI puro** en vez de Passenger, si este servidor lo soporta
+   (`mod_fcgid` suele venir activado incluso donde Passenger no) — exigiría
+   adaptar `passenger_wsgi.py` a un wrapper `.fcgi`, más trabajo y menos
+   estándar que las otras dos opciones.
 
 ## Pendiente después de esto
 
