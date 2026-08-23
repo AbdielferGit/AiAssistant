@@ -1,0 +1,19 @@
+# Lista blanca de invitados a la versión WEB de AiAssistant.
+#
+# Distinta a propósito de config/contacts.yaml: contacts.yaml autoriza a
+# quién puede el asistente ENVIARLE o RECIBIRLE mensajes (WhatsApp, email,
+# Messenger...); este archivo autoriza quién puede INICIAR SESIÓN en la web
+# (orchestrator/web/) y usar el chat. Son dos listas de control de acceso
+# distintas aunque compartan el mismo patrón sencillo.
+#
+# Copia este archivo a "invited_users.yaml" (sin sufijo .example) y agrega
+# ahí, uno por uno, los correos de Google que quieras invitar — empezando
+# por el tuyo. Nadie fuera de esta lista puede pasar del login, sin
+# importar que tenga el link de la web.
+invitados:
+  - correo: tu-correo@gmail.com
+    nombre: Tú
+    activo: true
+  # - correo: persona-que-invitas@example.com
+  #   nombre: Nombre de la persona
+  #   activo: true

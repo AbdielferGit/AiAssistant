@@ -8,6 +8,9 @@ y en tu celular Android, y de redactar mensajes con tu propio estilo.
 1. Lee [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) para entender cómo encajan las piezas.
 2. Sigue [`MANUAL_CONEXION.md`](MANUAL_CONEXION.md) paso a paso para conectar Mac + Android + Google + WhatsApp.
 3. Revisa [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) para la ruta de hosting y de convertir esto en producto vendible.
+4. Para usarlo desde el navegador (no solo terminal), ve
+   [`docs/DEPLOY_BLUEHOST.md`](docs/DEPLOY_BLUEHOST.md) — despliegue en
+   Bluehost con login por invitación (`orchestrator/web/`).
 
 ## Estructura del repo
 
@@ -16,10 +19,12 @@ AiAssistant/
 ├── MANUAL_CONEXION.md       # Manual paso a paso (Mac + Android + APIs)
 ├── docker-compose.yml       # Levanta orchestrator + puente de WhatsApp
 ├── .env.example             # Variables de entorno necesarias
+├── passenger_wsgi.py         # Punto de entrada para Phusion Passenger (despliegue Bluehost)
 ├── config/
-│   └── contacts.yaml.example # Plantilla de la lista blanca de contactos
+│   ├── contacts.yaml.example        # Plantilla de la lista blanca de contactos
+│   └── invited_users.yaml.example   # Plantilla de la lista de invitados a la web
 ├── orchestrator/            # Cerebro del asistente (Python, SDK oficial de Anthropic)
-│   ├── main.py               # Loop genérico de tool-use — no conoce ningún agente en particular
+│   ├── main.py               # Loop genérico de tool-use por terminal — no conoce ningún agente en particular
 │   ├── router.py              # Antes de responder, elige (con Haiku) qué agente le toca al mensaje
 │   ├── config.py              # Carga de configuración/.env
 │   ├── contacts.py            # Lista blanca — autoriza envío/recepción en ambas direcciones
@@ -35,8 +40,13 @@ AiAssistant/
 │   ├── memory/                 # Estilo de escritura + memoria vectorial
 │   │   ├── vector_store.py
 │   │   └── style_profile.py
-│   └── bridge/                 # Bus de comandos hacia el celular
-│       └── server.py            # FastAPI: cola de comandos para Android
+│   ├── bridge/                 # Bus de comandos hacia el celular
+│   │   └── server.py            # FastAPI: cola de comandos para Android
+│   └── web/                    # Versión web — acceso remoto solo por invitación
+│       ├── app.py                # FastAPI: login, chat (mismo router/agentes que main.py), confirmar/cancelar
+│       ├── auth.py                # Google Sign-In + cookie de sesión firmada
+│       ├── invites.py             # Lista blanca de quién puede iniciar sesión
+│       └── static/                # login.html + index.html (frontend mínimo, sin build)
 ├── whatsapp-bridge/          # Microservicio Node.js (Baileys) para WhatsApp
 ├── android-bridge/           # Instrucciones + script Termux para el celular
 ├── mac-bridge/                # AppleScripts para iMessage/Mail/Calendar

@@ -1,12 +1,16 @@
 """Carga de configuración desde .env — un solo lugar para todas las variables."""
 from __future__ import annotations
 
+import logging
 import os
+import secrets
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+log = logging.getLogger("orchestrator.config")
 
 
 def _require(name: str, default: str | None = None) -> str:
@@ -38,9 +42,24 @@ class Settings:
     messenger_page_access_token: str
     vector_db_path: str
     inbound_tracker_path: str
+    web_session_secret: str
 
     @classmethod
     def load(cls) -> "Settings":
+        web_session_secret = os.getenv("WEB_SESSION_SECRET", "")
+        if not web_session_secret:
+            # No es fatal: generamos una efímera para que `python -m
+            # orchestrator.main` y pruebas locales no se rompan. Pero en
+            # producción (orchestrator/web/, passenger_wsgi.py) esto
+            # significa que TODAS las sesiones se invalidan cada vez que el
+            # proceso reinicia — define WEB_SESSION_SECRET en el .env real
+            # antes de exponer la web a nadie más que a ti.
+            web_session_secret = secrets.token_urlsafe(32)
+            log.warning(
+                "WEB_SESSION_SECRET no está definida en .env — usando una "
+                "clave aleatoria de un solo uso (las sesiones web no "
+                "sobrevivirán a un reinicio). Defínela antes de desplegar."
+            )
         return cls(
             anthropic_api_key=_require("ANTHROPIC_API_KEY"),
             anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5"),
@@ -59,6 +78,7 @@ class Settings:
             messenger_page_access_token=os.getenv("MESSENGER_PAGE_ACCESS_TOKEN", ""),
             vector_db_path=os.getenv("VECTOR_DB_PATH", "./data/vector_store"),
             inbound_tracker_path=os.getenv("INBOUND_TRACKER_PATH", "./data/whatsapp_last_inbound.json"),
+            web_session_secret=web_session_secret,
         )
 
 

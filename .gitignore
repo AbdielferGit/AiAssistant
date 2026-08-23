@@ -9,6 +9,9 @@ android-bridge/*.token
 # Lista de contactos real (PII) — solo se sube la plantilla .example
 config/contacts.yaml
 
+# Lista de invitados a la web real (PII) — solo se sube la plantilla .example
+config/invited_users.yaml
+
 # Datos locales (DB, embeddings, sesiones)
 data/*
 !data/.gitkeep

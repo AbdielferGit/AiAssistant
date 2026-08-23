@@ -71,6 +71,20 @@ nunca se sube a git — solo la plantilla `contacts.yaml.example`.
    `bridge/server.py`; `android-bridge/scripts/listener.py` (corriendo en
    Termux) hace polling y lo ejecuta.
 
+## Versión web (acceso remoto, solo por invitación)
+
+`orchestrator/web/` expone el mismo cerebro (agentes + `router.py`) por
+HTTP en vez de por terminal, para no quedar atado a la Mac. Login con
+Google restringido a `config/invited_users.yaml` (lista aparte de
+`config/contacts.yaml` — una controla quién puede *usar el chat*, la otra
+a quién puede el asistente *contactar*). La única diferencia real de
+comportamiento frente a `main.py`: cuando una tool es irreversible, el
+turno no bloquea en `input()` — se pausa y el frontend muestra un modal
+de confirmar/cancelar (`orchestrator/web/app.py` función
+`_correr_turno_web`, endpoint `POST /api/chat/confirmar`). Desplegado en
+el hosting compartido de Bluehost vía Phusion Passenger
+(`passenger_wsgi.py`) — ver `docs/DEPLOY_BLUEHOST.md` para el paso a paso.
+
 ## WhatsApp: dos proveedores intercambiables
 
 `orchestrator/tools/whatsapp.py` es un despachador controlado por
