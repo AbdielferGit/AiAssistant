@@ -31,6 +31,7 @@ import logging
 import anthropic
 
 from orchestrator.agents import AGENTES, Agent_0
+from orchestrator.agents.base import system_prompt_con_fecha
 from orchestrator.config import settings
 from orchestrator.router import elegir_agente
 
@@ -66,7 +67,7 @@ async def _correr_turno(client: anthropic.AsyncAnthropic, agente: Agent_0, mensa
         respuesta = await client.messages.create(
             model=settings.anthropic_model,
             max_tokens=MAX_TOKENS,
-            system=agente.system_prompt,
+            system=system_prompt_con_fecha(agente),
             tools=agente.tool_schemas,
             messages=mensajes,
         )

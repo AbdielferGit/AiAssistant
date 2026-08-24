@@ -37,7 +37,16 @@ sin excepción.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
+
+# Zona horaria del usuario. Fija por ahora (un solo usuario/uso personal);
+# si esto se vuelve multiusuario, esto debería venir de la sesión/perfil de
+# cada quien en vez de ser una constante global.
+ZONA_HORARIA_USUARIO = "America/Toronto"
+
+_DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
 
 @dataclass(frozen=True)
@@ -59,3 +68,31 @@ class Agent_0:
     tool_schemas: list[dict] = field(default_factory=list)
     tool_funcs: dict[str, Callable[..., Any]] = field(default_factory=dict)
     tools_irreversibles: set[str] = field(default_factory=set)
+
+
+def system_prompt_con_fecha(agente: Agent_0) -> str:
+    """Antepone la fecha/hora actual al system_prompt del agente.
+
+    El modelo no tiene ninguna noción propia de "ahora" — sin esto, no
+    puede resolver fechas relativas ('hoy', 'esta semana', 'el viernes')
+    ni construir los parámetros ISO 8601 que piden tools como
+    listar_eventos_calendario o crear_evento_calendario, y termina
+    inventando una fecha o diciendo que no tiene acceso al sistema.
+
+    Se recalcula en CADA turno (nunca al importar el agente, y nunca se
+    guarda en Agent_0 — es frozen) para que nunca quede desactualizado,
+    ni siquiera en un proceso que lleva días corriendo (ej. Render)."""
+    ahora = datetime.now(ZoneInfo(ZONA_HORARIA_USUARIO))
+    dia = _DIAS_ES[ahora.weekday()]
+    contexto = (
+        f"Contexto temporal: hoy es {dia} {ahora.strftime('%Y-%m-%d')}, son las "
+        f"{ahora.strftime('%H:%M')} hora de {ZONA_HORARIA_USUARIO} "
+        f"(ISO 8601 completo: {ahora.isoformat()}). Usa esto como referencia "
+        f"para cualquier fecha u hora relativa ('hoy', 'mañana', 'esta "
+        f"semana', 'el viernes que viene') y para construir los parámetros "
+        f"de fecha ISO 8601 que piden algunas tools (ej. "
+        f"listar_eventos_calendario, crear_evento_calendario) — nunca "
+        f"inventes una fecha ni digas que no tienes forma de saber la fecha "
+        f"actual."
+    )
+    return f"{contexto}\n\n{agente.system_prompt}"

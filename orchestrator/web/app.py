@@ -34,6 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from orchestrator.agents import AGENTES, Agent_0
+from orchestrator.agents.base import system_prompt_con_fecha
 from orchestrator.config import settings
 from orchestrator.router import elegir_agente
 from orchestrator.web import auth
@@ -179,7 +180,7 @@ async def _correr_turno_web(sesion_id: str, agente: Agent_0, mensajes: list[dict
         respuesta = await _client.messages.create(
             model=settings.anthropic_model,
             max_tokens=MAX_TOKENS,
-            system=agente.system_prompt,
+            system=system_prompt_con_fecha(agente),
             tools=agente.tool_schemas,
             messages=mensajes,
         )
