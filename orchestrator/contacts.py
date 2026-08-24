@@ -9,14 +9,20 @@ cualquier mensaje entrante de alguien que no esté aquí. Es decir: la
 autorización se exige en las DOS direcciones, no solo al enviar.
 
 Fuente de datos: config/contacts.yaml (no versionado, contiene PII).
-Plantilla: config/contacts.yaml.example.
+Plantilla: config/contacts.yaml.example. En hostings sin disco persistente
+(ej. el free tier de Render) no hay forma de "colocar" ese archivo en el
+servidor tras el deploy — para esos casos, si el archivo no existe se cae
+a la variable de entorno CONTACTS_YAML, con el mismo YAML como texto
+plano (se define en el panel del hosting, no en el repo).
 
-No se cachea en memoria a propósito: cada verificación relee el archivo,
-así que editar config/contacts.yaml (a mano o con scripts/manage_contacts.py)
-tiene efecto inmediato sin reiniciar el orchestrator.
+No se cachea en memoria a propósito: cada verificación relee el archivo
+(o la variable de entorno), así que editar config/contacts.yaml (a mano o
+con scripts/manage_contacts.py) tiene efecto inmediato sin reiniciar el
+orchestrator.
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,13 +68,19 @@ def _normalizar(canal: str, identificador: str) -> str:
 
 
 def listar_todos() -> list[Contacto]:
-    if not CONFIG_PATH.exists():
-        raise RuntimeError(
-            f"No existe {CONFIG_PATH}. Copia config/contacts.yaml.example a "
-            f"config/contacts.yaml y agrega ahí tus contactos autorizados "
-            f"antes de enviar o procesar cualquier mensaje."
-        )
-    datos = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
+    if CONFIG_PATH.exists():
+        contenido = CONFIG_PATH.read_text(encoding="utf-8")
+    else:
+        contenido = os.getenv("CONTACTS_YAML", "")
+        if not contenido:
+            raise RuntimeError(
+                f"No existe {CONFIG_PATH} y tampoco está definida la variable "
+                f"de entorno CONTACTS_YAML. Copia config/contacts.yaml.example a "
+                f"config/contacts.yaml (o define CONTACTS_YAML con el mismo "
+                f"contenido en el panel del hosting) antes de enviar o procesar "
+                f"cualquier mensaje."
+            )
+    datos = yaml.safe_load(contenido) or {}
     contactos = []
     for c in datos.get("contactos", []):
         # Cualquier clave bajo "canales" cuenta — no hay lista fija, así

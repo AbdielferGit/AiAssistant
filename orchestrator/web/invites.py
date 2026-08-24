@@ -9,11 +9,16 @@ el mismo patrón: un YAML no versionado, con plantilla `.example`, releído
 en cada verificación (para que agregar/quitar un invitado tenga efecto
 inmediato sin reiniciar el servidor).
 
-Fuente: config/invited_users.yaml (no versionado, PII).
-Plantilla: config/invited_users.yaml.example.
+Fuente: config/invited_users.yaml (no versionado, PII). Plantilla:
+config/invited_users.yaml.example. En hostings sin disco persistente (ej.
+el free tier de Render) no hay forma de "colocar" ese archivo en el
+servidor tras el deploy — para esos casos, si el archivo no existe se cae
+a la variable de entorno INVITED_USERS_YAML, que debe contener el mismo
+YAML como texto plano (se define en el panel del hosting, no en el repo).
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,13 +35,18 @@ class Invitado:
 
 
 def _listar() -> list[Invitado]:
-    if not CONFIG_PATH.exists():
-        raise RuntimeError(
-            f"No existe {CONFIG_PATH}. Copia config/invited_users.yaml.example "
-            f"a config/invited_users.yaml y agrega ahí los correos autorizados "
-            f"a iniciar sesión antes de exponer la web."
-        )
-    datos = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
+    if CONFIG_PATH.exists():
+        contenido = CONFIG_PATH.read_text(encoding="utf-8")
+    else:
+        contenido = os.getenv("INVITED_USERS_YAML", "")
+        if not contenido:
+            raise RuntimeError(
+                f"No existe {CONFIG_PATH} y tampoco está definida la variable "
+                f"de entorno INVITED_USERS_YAML. Copia config/invited_users.yaml.example "
+                f"a config/invited_users.yaml (o define INVITED_USERS_YAML con el "
+                f"mismo contenido en el panel del hosting) antes de exponer la web."
+            )
+    datos = yaml.safe_load(contenido) or {}
     return [
         Invitado(
             correo=(i.get("correo") or "").strip().lower(),
