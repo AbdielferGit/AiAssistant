@@ -1,13 +1,31 @@
 """
-Gmail + Drive vía API oficial de Google.
+Gmail + Drive + Calendar vía API oficial de Google.
 
-Requiere credentials.json (OAuth client "Desktop app") en la raíz del repo
-y las variables GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET en .env.
-Ver MANUAL_CONEXION.md sección 1.
+Localmente (terminal, `python -m orchestrator.main`): requiere
+credentials.json (OAuth client "Desktop app") en la raíz del repo — la
+primera vez abre un navegador para autorizar de forma interactiva y deja
+el resultado cacheado en token.json. Ver MANUAL_CONEXION.md sección 1.
+
+En un servidor sin navegador ni disco persistente (ej. orchestrator/web/
+desplegado en Render free tier) ese flujo interactivo no se puede correr
+ahí. En su lugar: autoriza una vez en tu Mac como siempre, y pega el
+CONTENIDO completo de token.json (ya generado) en la variable de entorno
+GOOGLE_TOKEN_JSON del hosting — mismo patrón que CONTACTS_YAML /
+INVITED_USERS_YAML (ver orchestrator/contacts.py). El `refresh_token`
+dentro de ese JSON es lo que permite renovar el acceso sin volver a pasar
+por el navegador.
+
+Nota: mientras el proyecto de Google Cloud esté en modo "Testing" (no
+publicado), los refresh tokens expiran cada 7 días — si listar_eventos u
+otras tools empiezan a fallar, vuelve a autorizar en tu Mac y actualiza
+GOOGLE_TOKEN_JSON con el token.json nuevo. Publicar la app en modo "In
+production" (OAuth consent screen → Publish app) evita esto para los
+scopes no sensibles que usa este repo.
 """
 from __future__ import annotations
 
 import base64
+import json
 import os
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
@@ -30,13 +48,38 @@ TOKEN_PATH = Path("token.json")
 CREDENTIALS_PATH = Path("credentials.json")
 
 
+def _cargar_desde_variable_de_entorno() -> Credentials | None:
+    contenido = os.getenv("GOOGLE_TOKEN_JSON", "")
+    if not contenido:
+        return None
+    return Credentials.from_authorized_user_info(json.loads(contenido), SCOPES)
+
+
 def _get_credentials() -> Credentials:
+    origen_es_archivo = TOKEN_PATH.exists()
     creds: Credentials | None = None
-    if TOKEN_PATH.exists():
+    if origen_es_archivo:
         creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
+    else:
+        creds = _cargar_desde_variable_de_entorno()
+
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
+            if origen_es_archivo:
+                TOKEN_PATH.write_text(creds.to_json())
+            # Si venía de GOOGLE_TOKEN_JSON no hay dónde persistir el
+            # access_token renovado (el entorno no es editable en runtime) —
+            # no pasa nada, se vuelve a refrescar con el mismo
+            # refresh_token en la próxima llamada.
+        elif os.getenv("GOOGLE_TOKEN_JSON") and not origen_es_archivo:
+            raise RuntimeError(
+                "GOOGLE_TOKEN_JSON no tiene un token válido y no se pudo "
+                "refrescar (posiblemente expiró — los refresh tokens de "
+                "apps en modo 'Testing' duran 7 días). Vuelve a autorizar "
+                "en tu Mac (python -m orchestrator.main) y actualiza la "
+                "variable de entorno con el token.json nuevo."
+            )
         else:
             if not CREDENTIALS_PATH.exists():
                 raise RuntimeError(
@@ -45,7 +88,7 @@ def _get_credentials() -> Credentials:
                 )
             flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_PATH), SCOPES)
             creds = flow.run_local_server(port=8080)
-        TOKEN_PATH.write_text(creds.to_json())
+            TOKEN_PATH.write_text(creds.to_json())
     return creds
 
 
