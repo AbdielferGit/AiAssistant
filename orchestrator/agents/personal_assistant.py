@@ -81,6 +81,12 @@ def _crear_evento_calendario(titulo: str, inicio_iso: str, fin_iso: str) -> dict
     return google_workspace.crear_evento(titulo, inicio_iso, fin_iso)
 
 
+def _listar_eventos_calendario(
+    desde_iso: str | None = None, hasta_iso: str | None = None, max_resultados: int = 10
+) -> dict:
+    return google_workspace.listar_eventos(desde_iso, hasta_iso, max_resultados)
+
+
 def _abrir_app_o_archivo_mac(nombre: str) -> dict:
     return macos_actions.abrir(nombre)
 
@@ -98,6 +104,7 @@ TOOL_FUNCS = {
     "enviar_email": _enviar_email,
     "enviar_messenger": _enviar_messenger,
     "crear_evento_calendario": _crear_evento_calendario,
+    "listar_eventos_calendario": _listar_eventos_calendario,
     "abrir_app_o_archivo_mac": _abrir_app_o_archivo_mac,
     "ejecutar_accion_android": _ejecutar_accion_android,
 }
@@ -179,6 +186,34 @@ TOOL_SCHEMAS = [
                 "fin_iso": {"type": "string", "description": "Fecha/hora ISO 8601"},
             },
             "required": ["titulo", "inicio_iso", "fin_iso"],
+        },
+    },
+    {
+        "name": "listar_eventos_calendario",
+        "description": (
+            "Lee (nunca modifica) los próximos eventos del calendario "
+            "principal de Google del usuario. Úsala para responder preguntas "
+            "como '¿qué tengo hoy?', '¿cuándo es mi próxima reunión?' o "
+            "'¿tengo algo el viernes?'. Solo lectura — no requiere "
+            "confirmación."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "desde_iso": {
+                    "type": "string",
+                    "description": "Fecha/hora ISO 8601 desde donde buscar. Si se omite, usa el momento actual.",
+                },
+                "hasta_iso": {
+                    "type": "string",
+                    "description": "Fecha/hora ISO 8601 límite superior. Opcional — si se omite, no hay límite.",
+                },
+                "max_resultados": {
+                    "type": "integer",
+                    "description": "Cuántos eventos devolver como máximo (por defecto 10).",
+                },
+            },
+            "required": [],
         },
     },
     {

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import os
+from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from pathlib import Path
 
@@ -74,6 +75,38 @@ def crear_evento(titulo: str, inicio_iso: str, fin_iso: str) -> dict:
     }
     creado = service.events().insert(calendarId="primary", body=evento).execute()
     return {"status": "creado", "link": creado.get("htmlLink")}
+
+
+def listar_eventos(desde_iso: str | None = None, hasta_iso: str | None = None, max_resultados: int = 10) -> dict:
+    """Lee (nunca modifica) los próximos eventos del calendario principal.
+    Si `desde_iso` no se da, busca desde el momento actual; si `hasta_iso`
+    no se da, no hay límite superior (Google devuelve los siguientes
+    `max_resultados` eventos en orden cronológico a partir de `desde_iso`).
+    Usa el mismo scope `calendar.events` que `crear_evento` — no hace falta
+    volver a autorizar nada."""
+    service = build("calendar", "v3", credentials=_get_credentials())
+    parametros = {
+        "calendarId": "primary",
+        "timeMin": desde_iso or datetime.now(timezone.utc).isoformat(),
+        "maxResults": max_resultados,
+        "singleEvents": True,
+        "orderBy": "startTime",
+    }
+    if hasta_iso:
+        parametros["timeMax"] = hasta_iso
+    resultado = service.events().list(**parametros).execute()
+    eventos = [
+        {
+            "id": e.get("id"),
+            "titulo": e.get("summary", "(sin título)"),
+            "inicio": e.get("start", {}).get("dateTime") or e.get("start", {}).get("date"),
+            "fin": e.get("end", {}).get("dateTime") or e.get("end", {}).get("date"),
+            "ubicacion": e.get("location", ""),
+            "link": e.get("htmlLink"),
+        }
+        for e in resultado.get("items", [])
+    ]
+    return {"eventos": eventos}
 
 
 def subir_a_drive(ruta_local: str, carpeta_id: str) -> dict:
