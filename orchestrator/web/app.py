@@ -45,6 +45,20 @@ app = FastAPI(title="AiAssistant web")
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
+
+@app.exception_handler(Exception)
+async def _manejar_error_no_previsto(request: Request, exc: Exception) -> JSONResponse:
+    """Sin esto, cualquier excepción no capturada (ej. RuntimeError de
+    google_workspace por falta de credenciales, un timeout de la API de
+    Anthropic, lo que sea) hace que FastAPI/Starlette devuelva una
+    respuesta de error genérica que NO es JSON — y el frontend, que espera
+    poder hacer response.json(), revienta con una excepción propia y
+    termina mostrando 'Error de red' sin ninguna pista real de qué pasó.
+    Con este handler, el cliente siempre recibe {"detail": "..."} — un
+    mensaje que sí se puede leer y mostrar."""
+    log.exception("Error no previsto en %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": f"{type(exc).__name__}: {exc}"})
+
 _client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
 MAX_TOKENS = 1536

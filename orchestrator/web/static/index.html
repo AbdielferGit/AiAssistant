@@ -108,28 +108,58 @@ formEl.addEventListener('submit', async (e) => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mensaje }),
     });
-    if (res.status === 401) { window.location.href = '/'; return; }
-    const data = await res.json();
-    await manejarRespuesta(data);
+    const data = await leerRespuestaOMostrarError(res);
+    if (data) await manejarRespuesta(data);
   } catch (err) {
-    agregarMensaje('Error de red. Intenta de nuevo.', 'system');
+    // Esto SOLO se dispara si fetch() nunca llegó a completar (sin
+    // internet, DNS, CORS, etc.) — no por un error que el servidor sí
+    // respondió (eso lo maneja leerRespuestaOMostrarError). Distinguirlo
+    // importa: "no llegó al servidor" y "el servidor respondió con error"
+    // son problemas distintos de diagnosticar.
+    agregarMensaje('No se pudo conectar con el servidor (' + (err.message || 'sin conexión') + '). Intenta de nuevo.', 'system');
   } finally {
     inputEl.disabled = false;
     inputEl.focus();
   }
 });
 
+// Centraliza el manejo de respuesta para /api/chat y /api/chat/confirmar:
+// - 401 → sesión vencida, manda a login.
+// - No-2xx con cuerpo JSON → muestra el status y el detail real del
+//   servidor, en vez de un genérico "error de red" que no dice nada.
+// - No-2xx sin JSON (ej. una página de error HTML de un proxy/gateway,
+//   típico si el servidor tardó demasiado) → muestra el status igual.
+// Devuelve el JSON parseado si todo salió bien, o null si ya se mostró
+// el error (el llamador no debe intentar usar la respuesta en ese caso).
+async function leerRespuestaOMostrarError(res) {
+  if (res.status === 401) { window.location.href = '/'; return null; }
+  if (!res.ok) {
+    let detalle = '';
+    try { detalle = (await res.json()).detail || ''; } catch (e) { /* no era JSON */ }
+    agregarMensaje(
+      'Error del servidor (HTTP ' + res.status + ')' + (detalle ? ': ' + detalle : '') + '.',
+      'system'
+    );
+    return null;
+  }
+  return res.json();
+}
+
 async function responderConfirmacion(confirmar) {
   modalBackdrop.style.display = 'none';
   if (!pendienteActual) return;
-  const res = await fetch('/api/chat/confirmar', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pendiente_id: pendienteActual.pendiente_id, confirmar }),
-  });
-  pendienteActual = null;
-  if (res.status === 401) { window.location.href = '/'; return; }
-  const data = await res.json();
-  await manejarRespuesta(data);
+  try {
+    const res = await fetch('/api/chat/confirmar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pendiente_id: pendienteActual.pendiente_id, confirmar }),
+    });
+    pendienteActual = null;
+    const data = await leerRespuestaOMostrarError(res);
+    if (data) await manejarRespuesta(data);
+  } catch (err) {
+    pendienteActual = null;
+    agregarMensaje('No se pudo conectar con el servidor (' + (err.message || 'sin conexión') + '). Intenta de nuevo.', 'system');
+  }
 }
 
 document.getElementById('modal-confirm').addEventListener('click', () => responderConfirmacion(true));
