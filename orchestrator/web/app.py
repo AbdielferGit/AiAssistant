@@ -135,10 +135,45 @@ async def whoami(request: Request):
     return _sesion_actual(request)
 
 
+def _cancelar_pendientes_de_sesion(sesion_id: str) -> None:
+    """Si el usuario abandona una confirmación pendiente — manda un mensaje
+    nuevo en vez de responder al modal, recarga la página, lo que sea — y
+    nunca la cerramos, el `tool_use` que quedó a medias en el historial
+    hace que CUALQUIER llamada futura a la API de Anthropic falle con 400
+    ('tool_use ids were found without tool_result blocks') — visto en
+    producción. Esa sesión queda rota hasta que el proceso se reinicia
+    (lo único que la 'arreglaba' antes era un redeploy que limpiaba la
+    memoria). Se llama al principio de /api/chat para garantizar que el
+    historial siempre esté en un estado válido antes de la próxima
+    llamada — nunca dejar un tool_use sin su tool_result."""
+    ids_de_esta_sesion = [pid for pid, p in _pendientes.items() if p["sesion_id"] == sesion_id]
+    for pendiente_id in ids_de_esta_sesion:
+        pendiente = _pendientes.pop(pendiente_id)
+        resultados = list(pendiente.get("resultados_previos", []))
+        resultados.append(
+            {
+                "type": "tool_result",
+                "tool_use_id": pendiente["tool_use_id"],
+                "content": json.dumps(
+                    {
+                        "status": "cancelado_automaticamente",
+                        "detalle": (
+                            "El usuario envió un mensaje nuevo sin responder "
+                            "a la confirmación pendiente."
+                        ),
+                    },
+                    ensure_ascii=False,
+                ),
+            }
+        )
+        _conversaciones.setdefault(sesion_id, []).append({"role": "user", "content": resultados})
+
+
 @app.post("/api/chat")
 async def chat(payload: ChatPayload, request: Request):
     sesion = _sesion_actual(request)
     sesion_id = sesion["correo"]  # una conversación por invitado — simple y suficiente hoy
+    _cancelar_pendientes_de_sesion(sesion_id)
     mensajes = _conversaciones.setdefault(sesion_id, [])
     mensajes.append({"role": "user", "content": payload.mensaje})
 
