@@ -53,10 +53,17 @@ async def _ejecutar_tool(agente: Agent_0, nombre: str, args: dict) -> dict:
     if func is None:
         return {"status": "error", "detalle": f"Tool desconocida: {nombre}"}
 
-    resultado = func(**args)
-    if inspect.isawaitable(resultado):
-        resultado = await resultado
-    return resultado
+    try:
+        resultado = func(**args)
+        if inspect.isawaitable(resultado):
+            resultado = await resultado
+        return resultado
+    except Exception as exc:
+        # Igual que en orchestrator/web/app.py: si esto propaga, el
+        # tool_use ya quedado en `mensajes` se queda sin su tool_result y
+        # revienta cada turno futuro de esta sesión de terminal.
+        log.exception("Tool %s(%s) falló", nombre, args)
+        return {"status": "error", "detalle": f"{type(exc).__name__}: {exc}"}
 
 
 async def _correr_turno(client: anthropic.AsyncAnthropic, agente: Agent_0, mensajes: list[dict]) -> None:

@@ -210,13 +210,27 @@ async def confirmar(payload: ConfirmarPayload, request: Request):
 
 
 async def _ejecutar_tool_web(agente: Agent_0, nombre: str, args: dict) -> dict:
+    """Nunca lanza. Una tool que revienta (credenciales rotas, timeout de
+    red, lo que sea) DEBE volver como un dict {"status": "error", ...} en
+    vez de propagar la excepción: si se propaga, el tool_use del asistente
+    ya quedó guardado en el historial persistido (se agregó ANTES de
+    ejecutar la tool) y esta función nunca llega a agregar su tool_result
+    — la sesión queda con un tool_use sin resolver para siempre (hasta el
+    próximo reinicio del proceso), y CUALQUIER mensaje futuro de esa
+    sesión falla con el mismo 400 de la API de Anthropic. Visto en
+    producción con crear_evento_calendario mientras GOOGLE_TOKEN_JSON
+    tenía un valor inválido."""
     func = agente.tool_funcs.get(nombre)
     if func is None:
         return {"status": "error", "detalle": f"Tool desconocida: {nombre}"}
-    resultado = func(**args)
-    if inspect.isawaitable(resultado):
-        resultado = await resultado
-    return resultado
+    try:
+        resultado = func(**args)
+        if inspect.isawaitable(resultado):
+            resultado = await resultado
+        return resultado
+    except Exception as exc:
+        log.exception("Tool %s(%s) falló", nombre, args)
+        return {"status": "error", "detalle": f"{type(exc).__name__}: {exc}"}
 
 
 async def _correr_turno_web(sesion_id: str, agente: Agent_0, mensajes: list[dict]) -> dict:
