@@ -4,8 +4,8 @@ Lista blanca de contactos — única fuente de verdad de autorización.
 Ningún tool de canal (whatsapp.py, google_workspace.py, messenger.py,
 macos_actions.py) puede enviar un mensaje sin pasar por
 `verificar_autorizado()` primero. Lo mismo aplica del lado de recepción:
-`orchestrator/bridge/server.py` (endpoint /inbound/{canal}) descarta
-cualquier mensaje entrante de alguien que no esté aquí. Es decir: la
+`orchestrator/webhooks/whatsapp_cloud.py` descarta cualquier mensaje
+entrante de alguien que no esté aquí. Es decir: la
 autorización se exige en las DOS direcciones, no solo al enviar.
 
 Fuente de datos: config/contacts.yaml (no versionado, contiene PII).

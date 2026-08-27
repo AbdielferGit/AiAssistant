@@ -1,12 +1,10 @@
 """
-Cliente de la WhatsApp Cloud API (Meta, oficial) — usado cuando
-WHATSAPP_PROVIDER=cloud_api (valor por defecto, recomendado mientras
-pruebas con el "número de prueba" gratuito de Meta for Developers).
-
-A diferencia de whatsapp-bridge/ (Baileys), aquí no hay QR ni sesión que
-mantener: es una API REST normal con un token de acceso. Ver
-MANUAL_CONEXION.md sección 3 para cómo obtener WHATSAPP_CLOUD_API_TOKEN y
-WHATSAPP_CLOUD_API_PHONE_NUMBER_ID desde el panel de Meta.
+Cliente de la WhatsApp Cloud API (Meta, oficial) — único proveedor de
+WhatsApp de este proyecto (se quitó el puente no oficial Baileys al
+simplificar). Es una API REST normal con un token de acceso, sin QR ni
+sesión que mantener. Ver MANUAL_CONEXION.md sección 2 para cómo obtener
+WHATSAPP_CLOUD_API_TOKEN y WHATSAPP_CLOUD_API_PHONE_NUMBER_ID desde el
+panel de Meta.
 
 Limitación importante mientras el número esté en modo prueba: solo puedes
 enviar texto libre a un contacto si te escribió en las últimas 24 h (ver

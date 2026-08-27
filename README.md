@@ -1,14 +1,13 @@
 # AiAssistant
 
-Asistente personal por voz, entrenable, capaz de ejecutar acciones en tu Mac
-y en tu celular Android, y de redactar mensajes con tu propio estilo.
+Asistente personal — Google (email + calendario), WhatsApp/Messenger
+(Meta oficial) y acciones en tu Mac. Se usa desde la terminal, en local.
 
 ## Empezar aquí
 
 1. Lee [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) para entender cómo encajan las piezas.
-2. Sigue [`MANUAL_CONEXION.md`](MANUAL_CONEXION.md) paso a paso para conectar Mac + Android + Google + WhatsApp.
-3. Revisa [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) para la ruta de hosting y de convertir esto en producto vendible.
-4. Para usarlo desde el navegador (no solo terminal), ve
+2. Sigue [`MANUAL_CONEXION.md`](MANUAL_CONEXION.md) paso a paso para conectar Google + WhatsApp/Messenger + Mac.
+3. Para usarlo desde el navegador (no solo terminal), ve
    [`docs/DEPLOY_BLUEHOST.md`](docs/DEPLOY_BLUEHOST.md) — despliegue en
    Bluehost con login por invitación (`orchestrator/web/`).
 
@@ -16,8 +15,7 @@ y en tu celular Android, y de redactar mensajes con tu propio estilo.
 
 ```
 AiAssistant/
-├── MANUAL_CONEXION.md       # Manual paso a paso (Mac + Android + APIs)
-├── docker-compose.yml       # Levanta orchestrator + puente de WhatsApp
+├── MANUAL_CONEXION.md       # Manual paso a paso (Google + WhatsApp/Messenger + Mac)
 ├── .env.example             # Variables de entorno necesarias
 ├── passenger_wsgi.py         # Punto de entrada para Phusion Passenger (despliegue Bluehost)
 ├── config/
@@ -33,22 +31,21 @@ AiAssistant/
 │   │   ├── personal_assistant.py # Agente "asistente" (predeterminado): envía, redacta, agenda
 │   │   └── ceo_analyst.py        # Agente "ceo": Analista de CEO, sin tools (puro análisis)
 │   ├── tools/                 # "Herramientas" que el LLM puede invocar
-│   │   ├── google_workspace.py  # Gmail + Drive
-│   │   ├── whatsapp.py          # Llama al puente de WhatsApp (Node/Baileys)
-│   │   ├── messenger.py         # Stub documentado (ver advertencia de riesgo)
+│   │   ├── google_workspace.py  # Gmail + Calendar + Drive
+│   │   ├── whatsapp.py          # Lista blanca + delega a whatsapp_cloud_api.py
+│   │   ├── whatsapp_cloud_api.py # Cliente de la WhatsApp Cloud API (Meta, oficial)
+│   │   ├── messenger.py         # Meta Messenger Platform (oficial, solo Páginas)
 │   │   └── macos_actions.py     # AppleScript / Shortcuts desde Python
 │   ├── memory/                 # Estilo de escritura + memoria vectorial
 │   │   ├── vector_store.py
 │   │   └── style_profile.py
-│   ├── bridge/                 # Bus de comandos hacia el celular
-│   │   └── server.py            # FastAPI: cola de comandos para Android
+│   ├── webhooks/                # Mensajes ENTRANTES de Meta (WhatsApp Cloud API)
+│   │   └── whatsapp_cloud.py     # FastAPI: webhook de verificación + inbound
 │   └── web/                    # Versión web — acceso remoto solo por invitación
 │       ├── app.py                # FastAPI: login, chat (mismo router/agentes que main.py), confirmar/cancelar
 │       ├── auth.py                # Google Sign-In + cookie de sesión firmada
 │       ├── invites.py             # Lista blanca de quién puede iniciar sesión
 │       └── static/                # login.html + index.html (frontend mínimo, sin build)
-├── whatsapp-bridge/          # Microservicio Node.js (Baileys) para WhatsApp
-├── android-bridge/           # Instrucciones + script Termux para el celular
 ├── mac-bridge/                # AppleScripts para iMessage/Mail/Calendar
 ├── scripts/                  # Setup de Google Cloud, sync a Drive
 └── data/                     # DB local (LanceDB/SQLite) — no se sube a git
@@ -68,6 +65,6 @@ quieras fijarlo con `--agente <id>`.
 ## Estado actual
 
 Esto es un **andamiaje inicial**: la estructura, el manual de conexión y los
-stubs de código están listos. Cada integración (Google, WhatsApp, Android)
-necesita que completes credenciales/pairing siguiendo el manual antes de
-que funcione de punta a punta.
+stubs de código están listos. Cada integración (Google, WhatsApp/Messenger)
+necesita que completes credenciales siguiendo el manual antes de que
+funcione de punta a punta.

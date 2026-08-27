@@ -54,7 +54,7 @@ Dos formas, cualquiera sirve:
   **Git Version Control** → clona el repo dentro de la carpeta que
   registraste como Application root.
 - **File Manager / SFTP**: sube el contenido del repo (puedes excluir
-  `whatsapp-bridge/node_modules`, `android-bridge/`, `data/`, `.git/`).
+  `data/`, `.git/`).
 
 ## 3. Instalar dependencias en el virtualenv de la app
 

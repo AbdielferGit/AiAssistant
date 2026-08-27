@@ -10,12 +10,10 @@ Messenger. Las dos rutas posibles:
    este proyecto se convierte en producto (ver docs/PRODUCT_ROADMAP.md).
 
 2. No oficial (ej. librerías tipo `fca-unofficial`): actúa como tu cuenta
-   personal, pero con el mismo riesgo de baneo que WhatsApp no oficial —
-   y sin un microservicio tan maduro/mantenido como Baileys.
+   personal, pero con riesgo de baneo — este proyecto la descartó
+   deliberadamente (ver docs/ARCHITECTURE.md).
 
-Este archivo implementa la vía (1). Si decides la vía (2) para tu prototipo
-personal, sigue el mismo patrón que whatsapp-bridge/ (microservicio Node
-aislado) para poder reemplazarlo después sin tocar el orchestrator.
+Este archivo implementa solo la vía (1) — la oficial.
 """
 from __future__ import annotations
 

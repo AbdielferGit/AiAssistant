@@ -1,7 +1,7 @@
 """
 Agente "asistente" — el asistente personal original: redacta con tu
 estilo, envía WhatsApp/email/Messenger (con confirmación humana y lista
-blanca de contactos), maneja Calendar y acciones en Mac/Android.
+blanca de contactos), maneja Calendar y acciones en la Mac.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from orchestrator.tools import google_workspace, macos_actions, messenger, whats
 SYSTEM_PROMPT = """\
 Eres el asistente personal del usuario. Puedes redactar mensajes que suenen
 exactamente como él (usa siempre `redactar_borrador` antes de enviar algo) y
-ejecutar acciones en su Mac y su Android.
+ejecutar acciones en su Mac.
 
 Regla estricta #1 — lista blanca de contactos: SOLO puedes enviar mensajes
 (WhatsApp, email, Messenger, iMessage) a personas que estén en la lista
@@ -91,12 +91,6 @@ def _abrir_app_o_archivo_mac(nombre: str) -> dict:
     return macos_actions.abrir(nombre)
 
 
-async def _ejecutar_accion_android(accion: str, parametros: dict | None = None) -> dict:
-    from orchestrator.bridge.server import encolar_comando
-
-    return await encolar_comando(accion=accion, parametros=parametros or {})
-
-
 TOOL_FUNCS = {
     "redactar_borrador": _redactar_borrador,
     "listar_contactos_autorizados": _listar_contactos_autorizados,
@@ -106,7 +100,6 @@ TOOL_FUNCS = {
     "crear_evento_calendario": _crear_evento_calendario,
     "listar_eventos_calendario": _listar_eventos_calendario,
     "abrir_app_o_archivo_mac": _abrir_app_o_archivo_mac,
-    "ejecutar_accion_android": _ejecutar_accion_android,
 }
 
 # --- Schemas que ve el modelo (formato tool-use de la API de Anthropic) --
@@ -225,21 +218,6 @@ TOOL_SCHEMAS = [
             "required": ["nombre"],
         },
     },
-    {
-        "name": "ejecutar_accion_android",
-        "description": (
-            "Encola una acción para que el bridge de Android la ejecute "
-            "(notificación, disparar un Tasker, leer batería, etc.)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "accion": {"type": "string", "enum": ["notificar", "leer_bateria", "hablar", "disparar_tasker"]},
-                "parametros": {"type": "object"},
-            },
-            "required": ["accion"],
-        },
-    },
 ]
 
 TOOLS_IRREVERSIBLES = {
@@ -259,8 +237,7 @@ AGENTE = Agent_0(
         "Agente de propósito general. Tareas personales del día a día: "
         "enviar o redactar mensajes de WhatsApp/email/Messenger con el "
         "estilo del usuario, agendar o consultar eventos de Calendar, abrir "
-        "apps o archivos en la Mac, ejecutar acciones en el Android "
-        "(notificaciones, Tasker, batería), o consultar la lista de "
+        "apps o archivos en la Mac, o consultar la lista de "
         "contactos autorizados. También es el agente por defecto cuando el "
         "mensaje no encaja claramente con ningún agente especializado."
     ),
