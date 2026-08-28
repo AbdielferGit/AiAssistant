@@ -37,6 +37,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from orchestrator import contacts
 
@@ -168,6 +169,21 @@ def listar_eventos(desde_iso: str | None = None, hasta_iso: str | None = None, m
         for e in resultado.get("items", [])
     ]
     return {"eventos": eventos}
+
+
+def eliminar_evento(evento_id: str) -> dict:
+    """Borra un evento del calendario principal por su id (el campo `id`
+    que devuelve `listar_eventos`). Usa el mismo scope `calendar.events`
+    que crear_evento/listar_eventos."""
+    service = build("calendar", "v3", credentials=_get_credentials())
+    try:
+        service.events().delete(calendarId="primary", eventId=evento_id).execute()
+    except HttpError as exc:
+        if exc.resp.status == 410:
+            # Ya estaba borrado (o nunca existió) — no es un error real.
+            return {"status": "ya_no_existia", "evento_id": evento_id}
+        raise
+    return {"status": "eliminado", "evento_id": evento_id}
 
 
 def subir_a_drive(ruta_local: str, carpeta_id: str) -> dict:

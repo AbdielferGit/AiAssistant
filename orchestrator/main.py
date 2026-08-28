@@ -45,7 +45,13 @@ async def _ejecutar_tool(agente: Agent_0, nombre: str, args: dict) -> dict:
     if nombre in agente.tools_irreversibles:
         print(f"\n⚠️  El agente quiere ejecutar una acción IRREVERSIBLE:")
         print(f"    {nombre}({json.dumps(args, ensure_ascii=False, indent=2)})")
-        respuesta = await asyncio.to_thread(input, "¿Confirmas? (sí/no): ")
+        try:
+            respuesta = await asyncio.to_thread(input, "¿Confirmas? (sí/no): ")
+        except EOFError:
+            # stdin se cerró mientras esperábamos la confirmación (ej. la
+            # terminal se cerró, o venía de un pipe que ya se agotó) — trata
+            # esto como "no" en vez de reventar con una excepción sin manejar.
+            respuesta = "no"
         if respuesta.strip().lower() not in ("si", "sí", "s", "yes", "y"):
             return {"status": "cancelado_por_usuario"}
 

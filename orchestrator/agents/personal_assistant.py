@@ -87,6 +87,10 @@ def _listar_eventos_calendario(
     return google_workspace.listar_eventos(desde_iso, hasta_iso, max_resultados)
 
 
+def _eliminar_evento_calendario(evento_id: str) -> dict:
+    return google_workspace.eliminar_evento(evento_id)
+
+
 def _abrir_app_o_archivo_mac(nombre: str) -> dict:
     return macos_actions.abrir(nombre)
 
@@ -99,6 +103,7 @@ TOOL_FUNCS = {
     "enviar_messenger": _enviar_messenger,
     "crear_evento_calendario": _crear_evento_calendario,
     "listar_eventos_calendario": _listar_eventos_calendario,
+    "eliminar_evento_calendario": _eliminar_evento_calendario,
     "abrir_app_o_archivo_mac": _abrir_app_o_archivo_mac,
 }
 
@@ -210,6 +215,19 @@ TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "eliminar_evento_calendario",
+        "description": (
+            "Borra un evento del calendario principal por su id (usa "
+            "listar_eventos_calendario primero para conseguirlo si no lo "
+            "tienes). IRREVERSIBLE."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"evento_id": {"type": "string"}},
+            "required": ["evento_id"],
+        },
+    },
+    {
         "name": "abrir_app_o_archivo_mac",
         "description": "Abre una aplicación o archivo en la Mac. Reversible.",
         "input_schema": {
@@ -224,6 +242,7 @@ TOOLS_IRREVERSIBLES = {
     "enviar_whatsapp",
     "enviar_email",
     "enviar_messenger",
+    "eliminar_evento_calendario",
     "publicar_contenido",
 }
 
@@ -236,7 +255,7 @@ AGENTE = Agent_0(
     descripcion_enrutador=(
         "Agente de propósito general. Tareas personales del día a día: "
         "enviar o redactar mensajes de WhatsApp/email/Messenger con el "
-        "estilo del usuario, agendar o consultar eventos de Calendar, abrir "
+        "estilo del usuario, agendar, consultar o borrar eventos de Calendar, abrir "
         "apps o archivos en la Mac, o consultar la lista de "
         "contactos autorizados. También es el agente por defecto cuando el "
         "mensaje no encaja claramente con ningún agente especializado."
