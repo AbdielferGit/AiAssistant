@@ -26,17 +26,21 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from pathlib import Path
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 from orchestrator import contacts
+
+log = logging.getLogger("orchestrator.google_workspace")
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
@@ -63,8 +67,8 @@ def _get_credentials() -> Credentials:
     else:
         creds = _cargar_desde_variable_de_entorno()
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
+    if creds and not creds.valid and creds.expired and creds.refresh_token:
+        try:
             creds.refresh(Request())
             if origen_es_archivo:
                 TOKEN_PATH.write_text(creds.to_json())
@@ -72,23 +76,37 @@ def _get_credentials() -> Credentials:
             # access_token renovado (el entorno no es editable en runtime) —
             # no pasa nada, se vuelve a refrescar con el mismo
             # refresh_token en la próxima llamada.
-        elif os.getenv("GOOGLE_TOKEN_JSON") and not origen_es_archivo:
-            raise RuntimeError(
-                "GOOGLE_TOKEN_JSON no tiene un token válido y no se pudo "
-                "refrescar (posiblemente expiró — los refresh tokens de "
-                "apps en modo 'Testing' duran 7 días). Vuelve a autorizar "
-                "en tu Mac (python -m orchestrator.main) y actualiza la "
-                "variable de entorno con el token.json nuevo."
-            )
-        else:
-            if not CREDENTIALS_PATH.exists():
+        except RefreshError as exc:
+            if not origen_es_archivo:
                 raise RuntimeError(
-                    "Falta credentials.json — descárgalo desde Google Cloud "
-                    "Console siguiendo MANUAL_CONEXION.md sección 1."
-                )
-            flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_PATH), SCOPES)
-            creds = flow.run_local_server(port=8080)
-            TOKEN_PATH.write_text(creds.to_json())
+                    "GOOGLE_TOKEN_JSON no se pudo refrescar "
+                    f"({exc}) — posiblemente expiró (los refresh tokens de "
+                    "apps en modo 'Testing' duran 7 días). Vuelve a "
+                    "autorizar en tu Mac (python -m orchestrator.main) y "
+                    "actualiza la variable de entorno con el token.json "
+                    "nuevo."
+                ) from exc
+            # En tu Mac SÍ hay navegador a mano: en vez de romper la tool,
+            # se descarta el token vencido y se cae al flujo interactivo de
+            # abajo (mismo camino que si token.json nunca hubiera existido).
+            log.warning("El refresh_token de Google fue rechazado (%s) — pido autorización de nuevo.", exc)
+            creds = None
+
+    if not creds or not creds.valid:
+        if os.getenv("GOOGLE_TOKEN_JSON") and not origen_es_archivo:
+            raise RuntimeError(
+                "GOOGLE_TOKEN_JSON no tiene un token válido — vuelve a "
+                "autorizar en tu Mac (python -m orchestrator.main) y "
+                "actualiza la variable de entorno con el token.json nuevo."
+            )
+        if not CREDENTIALS_PATH.exists():
+            raise RuntimeError(
+                "Falta credentials.json — descárgalo desde Google Cloud "
+                "Console siguiendo MANUAL_CONEXION.md sección 1."
+            )
+        flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_PATH), SCOPES)
+        creds = flow.run_local_server(port=8080)
+        TOKEN_PATH.write_text(creds.to_json())
     return creds
 
 
