@@ -248,3 +248,70 @@ def subir_a_drive(ruta_local: str, carpeta_id: str) -> dict:
         metadata = {"name": nombre, "parents": [carpeta_id]}
         archivo = service.files().create(body=metadata, media_body=media).execute()
     return {"status": "sincronizado", "file_id": archivo.get("id")}
+
+
+def _buscar_o_crear_carpeta_drive(nombre: str, service) -> str:
+    """Busca una carpeta por nombre; si no existe, la crea. Con esto no
+    hace falta que nadie copie un folder id a mano (a diferencia de
+    GOOGLE_DRIVE_DB_FOLDER_ID/subir_a_drive) — se autobootstrapea la
+    primera vez que se necesita."""
+    resultado = (
+        service.files()
+        .list(q=f"name='{nombre}' and mimeType='application/vnd.google-apps.folder' and trashed=false")
+        .execute()
+    )
+    encontradas = resultado.get("files", [])
+    if encontradas:
+        return encontradas[0]["id"]
+    carpeta = (
+        service.files()
+        .create(body={"name": nombre, "mimeType": "application/vnd.google-apps.folder"})
+        .execute()
+    )
+    return carpeta["id"]
+
+
+def leer_texto_drive(nombre_archivo: str, carpeta_nombre: str) -> str | None:
+    """Devuelve el contenido de texto de `nombre_archivo` dentro de la
+    carpeta `carpeta_nombre` en Drive (ambos se buscan/crean por nombre —
+    ver _buscar_o_crear_carpeta_drive), o None si el archivo todavía no
+    existe (la carpeta sí se crea igual, para que escribir_texto_drive
+    tenga dónde guardar después)."""
+    service = build("drive", "v3", credentials=_get_credentials())
+    carpeta_id = _buscar_o_crear_carpeta_drive(carpeta_nombre, service)
+    resultado = (
+        service.files()
+        .list(q=f"name='{nombre_archivo}' and '{carpeta_id}' in parents and trashed=false")
+        .execute()
+    )
+    archivos = resultado.get("files", [])
+    if not archivos:
+        return None
+    contenido = service.files().get_media(fileId=archivos[0]["id"]).execute()
+    return contenido.decode("utf-8") if isinstance(contenido, bytes) else contenido
+
+
+def escribir_texto_drive(nombre_archivo: str, contenido: str, carpeta_nombre: str) -> dict:
+    """Crea o actualiza (por nombre, ver _buscar_o_crear_carpeta_drive) un
+    archivo de texto en Drive con `contenido`. Igual que subir_a_drive
+    pero a partir de un string en memoria, no de un archivo local — hace
+    falta para hostings sin disco (ej. Render free tier)."""
+    from googleapiclient.http import MediaInMemoryUpload
+
+    service = build("drive", "v3", credentials=_get_credentials())
+    carpeta_id = _buscar_o_crear_carpeta_drive(carpeta_nombre, service)
+    media = MediaInMemoryUpload(contenido.encode("utf-8"), mimetype="text/yaml", resumable=False)
+
+    resultado = (
+        service.files()
+        .list(q=f"name='{nombre_archivo}' and '{carpeta_id}' in parents and trashed=false")
+        .execute()
+    )
+    existentes = resultado.get("files", [])
+    if existentes:
+        archivo = service.files().update(fileId=existentes[0]["id"], media_body=media).execute()
+    else:
+        archivo = service.files().create(
+            body={"name": nombre_archivo, "parents": [carpeta_id]}, media_body=media
+        ).execute()
+    return {"status": "sincronizado", "file_id": archivo.get("id")}

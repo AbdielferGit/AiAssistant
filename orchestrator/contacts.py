@@ -8,27 +8,37 @@ macos_actions.py) puede enviar un mensaje sin pasar por
 entrante de alguien que no esté aquí. Es decir: la
 autorización se exige en las DOS direcciones, no solo al enviar.
 
-Fuente de datos: config/contacts.yaml (no versionado, contiene PII).
-Plantilla: config/contacts.yaml.example. En hostings sin disco persistente
-(ej. el free tier de Render) no hay forma de "colocar" ese archivo en el
-servidor tras el deploy — para esos casos, si el archivo no existe se cae
-a la variable de entorno CONTACTS_YAML, con el mismo YAML como texto
-plano (se define en el panel del hosting, no en el repo).
+Fuente de datos, en orden de prioridad (ver _leer_yaml_crudo):
+1. config/contacts.yaml en disco (no versionado, contiene PII; plantilla:
+   contacts.yaml.example) — la fuente normal en tu Mac.
+2. Google Drive (carpeta 'AiAssistant-DB', archivo 'contacts.yaml' —
+   buscados/creados por nombre, sin ningún ID que configurar a mano). Es
+   la fuente en hostings sin disco persistente (ej. Render free tier)
+   cuando agregar_contacto ya se usó desde ahí al menos una vez. Se
+   cachea 20s en memoria (ver _CACHE_TTL_SEGUNDOS) para no pegarle a la
+   API de Drive en cada mensaje.
+3. La variable de entorno CONTACTS_YAML, con el mismo YAML como texto
+   plano (se define a mano en el panel del hosting) — patrón anterior,
+   sigue funcionando como último respaldo si Drive no está disponible.
 
-No se cachea en memoria a propósito: cada verificación relee el archivo
-(o la variable de entorno), así que editar config/contacts.yaml (a mano o
-con scripts/manage_contacts.py) tiene efecto inmediato sin reiniciar el
-orchestrator.
+El archivo local (opción 1), si existe, NUNCA se cachea: cada
+verificación lo relee, así que editarlo a mano (o con
+scripts/manage_contacts.py) tiene efecto inmediato sin reiniciar el
+orchestrator. Drive sí se cachea porque es una llamada de red.
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 import secrets
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+log = logging.getLogger("orchestrator.contacts")
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "contacts.yaml"
 
@@ -68,20 +78,51 @@ def _normalizar(canal: str, identificador: str) -> str:
     return identificador.lower()
 
 
-def listar_todos() -> list[Contacto]:
+_DRIVE_CARPETA = "AiAssistant-DB"
+_DRIVE_ARCHIVO = "contacts.yaml"
+_CACHE_TTL_SEGUNDOS = 20  # Drive es una llamada de red; sin esto, cada
+# verificar_autorizado() de cada mensaje pegaría a la API en hostings sin
+# disco. 20s es corto a propósito: un contacto agregado por chat queda
+# usable casi de inmediato (además, agregar_contacto invalida el caché).
+_cache_drive: dict = {"contenido": None, "expira": 0.0}
+
+
+def _leer_yaml_crudo() -> str:
+    """Prioridad: archivo local (tu Mac) > Drive (hostings sin disco, con
+    caché corto) > variable de entorno CONTACTS_YAML (compatibilidad con
+    el patrón anterior, ej. si Drive no está disponible)."""
     if CONFIG_PATH.exists():
-        contenido = CONFIG_PATH.read_text(encoding="utf-8")
-    else:
-        contenido = os.getenv("CONTACTS_YAML", "")
-        if not contenido:
-            raise RuntimeError(
-                f"No existe {CONFIG_PATH} y tampoco está definida la variable "
-                f"de entorno CONTACTS_YAML. Copia config/contacts.yaml.example a "
-                f"config/contacts.yaml (o define CONTACTS_YAML con el mismo "
-                f"contenido en el panel del hosting) antes de enviar o procesar "
-                f"cualquier mensaje."
-            )
-    datos = yaml.safe_load(contenido) or {}
+        return CONFIG_PATH.read_text(encoding="utf-8")
+
+    if _cache_drive["contenido"] is not None and _cache_drive["expira"] > time.time():
+        return _cache_drive["contenido"]
+
+    from orchestrator.tools import google_workspace
+
+    try:
+        contenido = google_workspace.leer_texto_drive(_DRIVE_ARCHIVO, _DRIVE_CARPETA)
+    except Exception:
+        contenido = None
+    if contenido is not None:
+        _cache_drive["contenido"] = contenido
+        _cache_drive["expira"] = time.time() + _CACHE_TTL_SEGUNDOS
+        return contenido
+
+    contenido = os.getenv("CONTACTS_YAML", "")
+    if contenido:
+        return contenido
+
+    raise RuntimeError(
+        f"No existe {CONFIG_PATH}, no hay contacts.yaml en Drive todavía "
+        f"(carpeta '{_DRIVE_CARPETA}'), y tampoco está definida la variable "
+        f"de entorno CONTACTS_YAML. Copia config/contacts.yaml.example a "
+        f"config/contacts.yaml, o agrega tu primer contacto por chat "
+        f"(agregar_contacto crea el archivo en Drive solo)."
+    )
+
+
+def listar_todos() -> list[Contacto]:
+    datos = yaml.safe_load(_leer_yaml_crudo()) or {}
     contactos = []
     for c in datos.get("contactos", []):
         # Cualquier clave bajo "canales" cuenta — no hay lista fija, así
@@ -141,34 +182,45 @@ def generar_pin_confirmacion() -> str:
 
 
 def agregar_contacto(nombre: str, alias: str, medios: dict[str, str]) -> dict:
-    """Agrega un contacto nuevo a config/contacts.yaml. SOLO debe llamarse
-    después de que main.py/web/app.py ya verificaron el PIN de
-    confirmación (ver generar_pin_confirmacion) — esta función en sí no
-    vuelve a pedirlo, confía en que el llamador ya lo hizo.
+    """Agrega un contacto nuevo. SOLO debe llamarse después de que
+    main.py/web/app.py ya verificaron el PIN de confirmación (ver
+    generar_pin_confirmacion) — esta función en sí no vuelve a pedirlo,
+    confía en que el llamador ya lo hizo.
 
-    Requiere que config/contacts.yaml exista de verdad en disco. En
-    hostings sin disco persistente (ej. Render free tier, que depende de
-    la variable de entorno CONTACTS_YAML) no hay dónde persistir un
-    contacto nuevo — falla con un error claro en vez de fingir que
-    funcionó."""
-    if CONFIG_PATH.exists():
-        datos = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
-    elif os.getenv("CONTACTS_YAML"):
-        raise RuntimeError(
-            "Este hosting no tiene disco persistente (usa la variable de "
-            "entorno CONTACTS_YAML) — agregar contactos por chat solo "
-            "funciona en tu Mac, donde config/contacts.yaml es un archivo "
-            "real. Agrégalo ahí con este mismo chat (o "
-            "scripts/manage_contacts.py) y actualiza la variable de "
-            "entorno a mano con el contenido nuevo."
-        )
-    else:
-        datos = {}
-
+    Dónde queda guardado:
+    - Si config/contacts.yaml existe en disco (tu Mac): se escribe ahí
+      directo, Y ADEMÁS se sincroniza a Drive (carpeta 'AiAssistant-DB')
+      si hay credenciales de Google disponibles, para que la web vea el
+      mismo contacto sin pasos manuales. Si esa sincronización falla (sin
+      red, sin token, lo que sea) no se considera un error — el contacto
+      ya quedó guardado localmente, que es la fuente de verdad en tu Mac.
+    - Si NO hay archivo local (ej. Render free tier, sin disco
+      persistente): se guarda directo en Drive. Sin Drive disponible ahí,
+      no hay dónde persistir — falla con un error claro."""
+    datos = yaml.safe_load(_leer_yaml_crudo()) or {}
     datos.setdefault("contactos", [])
     if any(c.get("alias") == alias for c in datos["contactos"]):
         raise ValueError(f"Ya existe un contacto con alias '{alias}'. Usa otro alias.")
 
     datos["contactos"].append({"nombre": nombre, "alias": alias, "activo": True, "canales": medios})
-    CONFIG_PATH.write_text(yaml.safe_dump(datos, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    nuevo_yaml = yaml.safe_dump(datos, allow_unicode=True, sort_keys=False)
+
+    if CONFIG_PATH.exists():
+        CONFIG_PATH.write_text(nuevo_yaml, encoding="utf-8")
+        try:
+            from orchestrator.tools import google_workspace
+
+            google_workspace.escribir_texto_drive(_DRIVE_ARCHIVO, nuevo_yaml, _DRIVE_CARPETA)
+        except Exception as exc:
+            log.warning(
+                "Se agregó el contacto localmente pero no se pudo sincronizar a Drive "
+                "(la web puede tardar en verlo hasta que se sincronice): %s", exc,
+            )
+    else:
+        from orchestrator.tools import google_workspace
+
+        google_workspace.escribir_texto_drive(_DRIVE_ARCHIVO, nuevo_yaml, _DRIVE_CARPETA)
+
+    _cache_drive["contenido"] = nuevo_yaml
+    _cache_drive["expira"] = time.time() + _CACHE_TTL_SEGUNDOS
     return {"status": "agregado", "nombre": nombre, "alias": alias, "medios": medios}
