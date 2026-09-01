@@ -45,6 +45,7 @@ log = logging.getLogger("orchestrator.google_workspace")
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/calendar.events",
 ]
@@ -126,6 +127,45 @@ def enviar_email(destinatario: str, asunto: str, cuerpo: str) -> dict:
     raw = base64.urlsafe_b64encode(mensaje.as_bytes()).decode()
     enviado = service.users().messages().send(userId="me", body={"raw": raw}).execute()
     return {"status": "enviado", "id": enviado.get("id"), "contacto": contacto.nombre}
+
+
+def _extraer_cuerpo_texto(payload: dict) -> str:
+    """Busca la parte text/plain en el payload (posiblemente multipart) de
+    un mensaje de Gmail y la decodifica. Si no hay text/plain, se queda
+    vacío — el snippet de la API sirve de respaldo (ver leer_correos)."""
+    if payload.get("mimeType") == "text/plain" and payload.get("body", {}).get("data"):
+        datos = payload["body"]["data"]
+        relleno = "=" * (-len(datos) % 4)
+        return base64.urlsafe_b64decode(datos + relleno).decode("utf-8", errors="replace")
+    for parte in payload.get("parts") or []:
+        texto = _extraer_cuerpo_texto(parte)
+        if texto:
+            return texto
+    return ""
+
+
+def leer_correos(cantidad: int = 1) -> dict:
+    """Lee (nunca modifica) los correos más recientes de la bandeja de
+    entrada. Requiere el scope gmail.readonly — si el token actual solo
+    tiene gmail.send (de antes de agregar esta tool), falla con un 403 y
+    hay que reautorizar para que Google incluya el scope nuevo."""
+    service = build("gmail", "v1", credentials=_get_credentials())
+    resultado = service.users().messages().list(userId="me", labelIds=["INBOX"], maxResults=cantidad).execute()
+    correos = []
+    for m in resultado.get("messages", []):
+        detalle = service.users().messages().get(userId="me", id=m["id"], format="full").execute()
+        headers = {h["name"].lower(): h["value"] for h in detalle.get("payload", {}).get("headers", [])}
+        cuerpo = _extraer_cuerpo_texto(detalle.get("payload", {})) or detalle.get("snippet", "")
+        correos.append(
+            {
+                "id": m["id"],
+                "de": headers.get("from", ""),
+                "asunto": headers.get("subject", "(sin asunto)"),
+                "fecha": headers.get("date", ""),
+                "cuerpo": cuerpo[:3000],
+            }
+        )
+    return {"correos": correos}
 
 
 def crear_evento(titulo: str, inicio_iso: str, fin_iso: str) -> dict:

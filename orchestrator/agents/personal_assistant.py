@@ -73,6 +73,10 @@ def _enviar_email(destinatario: str, asunto: str, cuerpo: str) -> dict:
     return google_workspace.enviar_email(destinatario, asunto, cuerpo)
 
 
+def _leer_correos(cantidad: int = 1) -> dict:
+    return google_workspace.leer_correos(cantidad)
+
+
 async def _enviar_messenger(destinatario_id: str, texto: str) -> dict:
     return await messenger.enviar(destinatario_id, texto)
 
@@ -100,6 +104,7 @@ TOOL_FUNCS = {
     "listar_contactos_autorizados": _listar_contactos_autorizados,
     "enviar_whatsapp": _enviar_whatsapp,
     "enviar_email": _enviar_email,
+    "leer_correos": _leer_correos,
     "enviar_messenger": _enviar_messenger,
     "crear_evento_calendario": _crear_evento_calendario,
     "listar_eventos_calendario": _listar_eventos_calendario,
@@ -159,6 +164,24 @@ TOOL_SCHEMAS = [
                 "cuerpo": {"type": "string"},
             },
             "required": ["destinatario", "asunto", "cuerpo"],
+        },
+    },
+    {
+        "name": "leer_correos",
+        "description": (
+            "Lee (nunca modifica) los correos más recientes de la bandeja "
+            "de entrada de Gmail — de, asunto, fecha y cuerpo. Solo "
+            "lectura, no requiere confirmación."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cantidad": {
+                    "type": "integer",
+                    "description": "Cuántos correos leer, empezando por el más reciente (por defecto 1).",
+                },
+            },
+            "required": [],
         },
     },
     {
@@ -255,7 +278,7 @@ AGENTE = Agent_0(
     descripcion_enrutador=(
         "Agente de propósito general. Tareas personales del día a día: "
         "enviar o redactar mensajes de WhatsApp/email/Messenger con el "
-        "estilo del usuario, agendar, consultar o borrar eventos de Calendar, abrir "
+        "estilo del usuario, leer correos de Gmail, agendar, consultar o borrar eventos de Calendar, abrir "
         "apps o archivos en la Mac, o consultar la lista de "
         "contactos autorizados. También es el agente por defecto cuando el "
         "mensaje no encaja claramente con ningún agente especializado."
