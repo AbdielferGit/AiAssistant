@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -125,3 +126,49 @@ def verificar_autorizado(canal: str, identificador: str) -> Contacto:
             f"fuera de los contactos permitidos."
         )
     return contacto
+
+
+def generar_pin_confirmacion() -> str:
+    """PIN de 6 dígitos criptográficamente aleatorio para confirmar
+    `agregar_contacto`. Lo genera SIEMPRE el código que maneja la
+    confirmación de acciones irreversibles (main.py / web/app.py), nunca
+    la tool en sí — así el modelo nunca lo ve en un tool_result, solo el
+    humano lo ve (impreso en la terminal, o en el modal de la web). Sin
+    esta separación el PIN no protegería nada: si el modelo lo viera,
+    podría reenviárselo a sí mismo en el siguiente turno sin que ningún
+    humano haya confirmado nada de verdad."""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def agregar_contacto(nombre: str, alias: str, medios: dict[str, str]) -> dict:
+    """Agrega un contacto nuevo a config/contacts.yaml. SOLO debe llamarse
+    después de que main.py/web/app.py ya verificaron el PIN de
+    confirmación (ver generar_pin_confirmacion) — esta función en sí no
+    vuelve a pedirlo, confía en que el llamador ya lo hizo.
+
+    Requiere que config/contacts.yaml exista de verdad en disco. En
+    hostings sin disco persistente (ej. Render free tier, que depende de
+    la variable de entorno CONTACTS_YAML) no hay dónde persistir un
+    contacto nuevo — falla con un error claro en vez de fingir que
+    funcionó."""
+    if CONFIG_PATH.exists():
+        datos = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
+    elif os.getenv("CONTACTS_YAML"):
+        raise RuntimeError(
+            "Este hosting no tiene disco persistente (usa la variable de "
+            "entorno CONTACTS_YAML) — agregar contactos por chat solo "
+            "funciona en tu Mac, donde config/contacts.yaml es un archivo "
+            "real. Agrégalo ahí con este mismo chat (o "
+            "scripts/manage_contacts.py) y actualiza la variable de "
+            "entorno a mano con el contenido nuevo."
+        )
+    else:
+        datos = {}
+
+    datos.setdefault("contactos", [])
+    if any(c.get("alias") == alias for c in datos["contactos"]):
+        raise ValueError(f"Ya existe un contacto con alias '{alias}'. Usa otro alias.")
+
+    datos["contactos"].append({"nombre": nombre, "alias": alias, "activo": True, "canales": medios})
+    CONFIG_PATH.write_text(yaml.safe_dump(datos, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return {"status": "agregado", "nombre": nombre, "alias": alias, "medios": medios}

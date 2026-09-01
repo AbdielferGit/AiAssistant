@@ -33,11 +33,19 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from orchestrator import contacts
 from orchestrator.agents import AGENTES, Agent_0
 from orchestrator.agents.base import system_prompt_con_fecha
 from orchestrator.config import settings
 from orchestrator.router import elegir_agente
 from orchestrator.web import auth
+
+# Tools irreversibles que, además del modal normal, exigen un PIN de un
+# solo uso porque tocan la lista blanca misma (ver
+# contacts.generar_pin_confirmacion). El PIN se genera aquí, en el
+# servidor, y solo viaja al FRONTEND (para que el humano lo vea en el
+# modal) — nunca se pone en un tool_result, así que el modelo no lo ve.
+TOOLS_CON_PIN = {"agregar_contacto"}
 
 log = logging.getLogger("orchestrator.web")
 app = FastAPI(title="AiAssistant web")
@@ -83,6 +91,7 @@ class ChatPayload(BaseModel):
 class ConfirmarPayload(BaseModel):
     pendiente_id: str
     confirmar: bool
+    pin: str | None = None
 
 
 def _sesion_actual(request: Request) -> dict:
@@ -192,7 +201,14 @@ async def confirmar(payload: ConfirmarPayload, request: Request):
     mensajes = _conversaciones[sesion_id]
     agente = AGENTES[pendiente["agente_id"]]
 
-    if payload.confirmar:
+    confirmar = payload.confirmar
+    if confirmar and pendiente.get("pin_requerido") and payload.pin != pendiente["pin_requerido"]:
+        # PIN incorrecto (o no lo mandó) — se trata igual que un "no", nunca
+        # se ejecuta la tool. No distinguimos el motivo en la respuesta para
+        # no darle a un atacante pistas de si el PIN estuvo cerca.
+        confirmar = False
+
+    if confirmar:
         resultado = await _ejecutar_tool_web(agente, pendiente["nombre"], pendiente["args"])
     else:
         resultado = {"status": "cancelado_por_usuario"}
@@ -292,6 +308,7 @@ async def _correr_turno_web(sesion_id: str, agente: Agent_0, mensajes: list[dict
                 )
 
             pendiente_id = str(uuid.uuid4())
+            pin_requerido = contacts.generar_pin_confirmacion() if primera.name in TOOLS_CON_PIN else None
             _pendientes[pendiente_id] = {
                 "sesion_id": sesion_id,
                 "agente_id": agente.id,
@@ -299,11 +316,13 @@ async def _correr_turno_web(sesion_id: str, agente: Agent_0, mensajes: list[dict
                 "args": primera.input,
                 "tool_use_id": primera.id,
                 "resultados_previos": resultados,
+                "pin_requerido": pin_requerido,
             }
             confirmacion_pendiente = {
                 "pendiente_id": pendiente_id,
                 "tool": primera.name,
                 "args": primera.input,
+                "pin_requerido": pin_requerido,
             }
             return {"agente": agente.nombre, "texto": texto, "confirmacion_pendiente": confirmacion_pendiente}
 

@@ -30,6 +30,7 @@ import logging
 
 import anthropic
 
+from orchestrator import contacts
 from orchestrator.agents import AGENTES, Agent_0
 from orchestrator.agents.base import system_prompt_con_fecha
 from orchestrator.config import settings
@@ -40,20 +41,40 @@ log = logging.getLogger("orchestrator")
 
 MAX_TOKENS = 1536
 
+# Tools irreversibles que, además del sí/no normal, exigen un PIN de un
+# solo uso porque tocan la lista blanca misma (ver
+# contacts.generar_pin_confirmacion). El modelo nunca ve el PIN — solo se
+# imprime aquí, en la terminal.
+TOOLS_CON_PIN = {"agregar_contacto"}
+
+
+async def _confirmar_con_pin() -> bool:
+    pin = contacts.generar_pin_confirmacion()
+    print(f"\n🔑 PIN de confirmación (válido solo ahora, no lo compartas): {pin}")
+    try:
+        respuesta = await asyncio.to_thread(input, "Escribe el PIN para confirmar: ")
+    except EOFError:
+        return False
+    return respuesta.strip() == pin
+
 
 async def _ejecutar_tool(agente: Agent_0, nombre: str, args: dict) -> dict:
     if nombre in agente.tools_irreversibles:
         print(f"\n⚠️  El agente quiere ejecutar una acción IRREVERSIBLE:")
         print(f"    {nombre}({json.dumps(args, ensure_ascii=False, indent=2)})")
-        try:
-            respuesta = await asyncio.to_thread(input, "¿Confirmas? (sí/no): ")
-        except EOFError:
-            # stdin se cerró mientras esperábamos la confirmación (ej. la
-            # terminal se cerró, o venía de un pipe que ya se agotó) — trata
-            # esto como "no" en vez de reventar con una excepción sin manejar.
-            respuesta = "no"
-        if respuesta.strip().lower() not in ("si", "sí", "s", "yes", "y"):
-            return {"status": "cancelado_por_usuario"}
+        if nombre in TOOLS_CON_PIN:
+            if not await _confirmar_con_pin():
+                return {"status": "cancelado_por_usuario"}
+        else:
+            try:
+                respuesta = await asyncio.to_thread(input, "¿Confirmas? (sí/no): ")
+            except EOFError:
+                # stdin se cerró mientras esperábamos la confirmación (ej. la
+                # terminal se cerró, o venía de un pipe que ya se agotó) — trata
+                # esto como "no" en vez de reventar con una excepción sin manejar.
+                respuesta = "no"
+            if respuesta.strip().lower() not in ("si", "sí", "s", "yes", "y"):
+                return {"status": "cancelado_por_usuario"}
 
     func = agente.tool_funcs.get(nombre)
     if func is None:

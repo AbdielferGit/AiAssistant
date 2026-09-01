@@ -27,6 +27,13 @@ Regla estricta #2 — confirmación humana: para CUALQUIER acción irreversible
 exacto de lo que vas a hacer. El propio sistema te pedirá confirmación por
 terminal antes de ejecutar la tool — nunca asumas que ya se envió algo
 hasta ver el resultado real de la tool.
+
+Regla estricta #3 — agregar_contacto es más sensible que las demás
+irreversibles: modifica la lista blanca misma. Además de la confirmación
+normal, el sistema le pide al usuario un PIN de un solo uso que TÚ NUNCA
+VES — no lo inventes, no lo asumas, no lo repitas de una respuesta
+anterior. Si la tool vuelve con 'cancelado_por_usuario', dile al usuario
+que el PIN no coincidió o que canceló — no reintentes solo.
 """
 
 
@@ -63,6 +70,10 @@ def _listar_contactos_autorizados() -> dict:
             for c in contacts.listar_todos()
         ]
     }
+
+
+def _agregar_contacto(nombre: str, alias: str, medios: dict[str, str] | None = None) -> dict:
+    return contacts.agregar_contacto(nombre, alias, medios or {})
 
 
 async def _enviar_whatsapp(numero: str, texto: str) -> dict:
@@ -102,6 +113,7 @@ def _abrir_app_o_archivo_mac(nombre: str) -> dict:
 TOOL_FUNCS = {
     "redactar_borrador": _redactar_borrador,
     "listar_contactos_autorizados": _listar_contactos_autorizados,
+    "agregar_contacto": _agregar_contacto,
     "enviar_whatsapp": _enviar_whatsapp,
     "enviar_email": _enviar_email,
     "leer_correos": _leer_correos,
@@ -140,6 +152,37 @@ TOOL_SCHEMAS = [
             "redactar o enviar algo."
         ),
         "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "agregar_contacto",
+        "description": (
+            "Agrega un contacto nuevo a la lista blanca (config/contacts.yaml). "
+            "IRREVERSIBLE y de más alto riesgo que las demás tools "
+            "irreversibles: modifica la lista blanca misma, así que el "
+            "usuario tiene que confirmar con un PIN de un solo uso que se "
+            "le muestra a él directamente y que TÚ nunca ves. No inventes "
+            "ni asumas un PIN — si la tool devuelve "
+            "'cancelado_por_usuario', el PIN no coincidió o el usuario "
+            "canceló; dile eso, no lo intentes de nuevo sin que el usuario "
+            "lo pida explícitamente."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nombre": {"type": "string"},
+                "alias": {"type": "string", "description": "Identificador corto único, ej. 'juan'."},
+                "medios": {
+                    "type": "object",
+                    "description": (
+                        "Mapa medio→valor, ej. "
+                        '{"whatsapp": "+521234567890", "email": "juan@correo.com"}. '
+                        "Puede ir vacío y agregarse después."
+                    ),
+                    "additionalProperties": {"type": "string"},
+                },
+            },
+            "required": ["nombre", "alias"],
+        },
     },
     {
         "name": "enviar_whatsapp",
@@ -266,6 +309,7 @@ TOOLS_IRREVERSIBLES = {
     "enviar_email",
     "enviar_messenger",
     "eliminar_evento_calendario",
+    "agregar_contacto",
     "publicar_contenido",
 }
 
@@ -279,8 +323,9 @@ AGENTE = Agent_0(
         "Agente de propósito general. Tareas personales del día a día: "
         "enviar o redactar mensajes de WhatsApp/email/Messenger con el "
         "estilo del usuario, leer correos de Gmail, agendar, consultar o borrar eventos de Calendar, abrir "
-        "apps o archivos en la Mac, o consultar la lista de "
-        "contactos autorizados. También es el agente por defecto cuando el "
+        "apps o archivos en la Mac, consultar la lista de "
+        "contactos autorizados o agregar un contacto nuevo (con PIN de "
+        "confirmación). También es el agente por defecto cuando el "
         "mensaje no encaja claramente con ningún agente especializado."
     ),
     es_predeterminado=True,

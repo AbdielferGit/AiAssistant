@@ -43,6 +43,12 @@
   .modal-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1rem; }
   .btn-cancel { background: #334155; }
   .btn-confirm { background: #dc2626; }
+  #modal-pin-wrap p { margin: .6rem 0 .25rem; font-size: .85rem; color: #94a3b8; }
+  #modal-pin-valor { font-family: monospace; font-size: 1.15rem; letter-spacing: .1em; color: #e2e8f0; }
+  #modal-pin-input {
+    width: 100%; background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
+    padding: .55rem .7rem; border-radius: 8px; font-size: .95rem; letter-spacing: .1em;
+  }
 </style>
 </head>
 <body>
@@ -61,6 +67,11 @@
     <h2>⚠️ Acción irreversible</h2>
     <p id="modal-tool"></p>
     <pre id="modal-args"></pre>
+    <div id="modal-pin-wrap" style="display:none">
+      <p>PIN de confirmación (solo tú lo ves, escríbelo abajo):</p>
+      <p id="modal-pin-valor"></p>
+      <input type="text" id="modal-pin-input" placeholder="Escribe el PIN" autocomplete="off">
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel" id="modal-cancel" type="button">Cancelar</button>
       <button class="btn-confirm" id="modal-confirm" type="button">Confirmar</button>
@@ -88,7 +99,21 @@ function mostrarPendiente(pendiente) {
   pendienteActual = pendiente;
   document.getElementById('modal-tool').textContent = 'El asistente quiere ejecutar: ' + pendiente.tool;
   document.getElementById('modal-args').textContent = JSON.stringify(pendiente.args, null, 2);
+  const pinWrap = document.getElementById('modal-pin-wrap');
+  const pinInput = document.getElementById('modal-pin-input');
+  pinInput.value = '';
+  if (pendiente.pin_requerido) {
+    // El PIN lo generó el servidor y llega SOLO en esta respuesta al
+    // navegador — nunca pasa por el modelo. Mostrarlo aquí y pedir que se
+    // reescriba es justo el punto: fuerza una acción deliberada del
+    // humano, no un click reflejo.
+    document.getElementById('modal-pin-valor').textContent = pendiente.pin_requerido;
+    pinWrap.style.display = 'block';
+  } else {
+    pinWrap.style.display = 'none';
+  }
   modalBackdrop.style.display = 'flex';
+  if (pendiente.pin_requerido) pinInput.focus();
 }
 
 async function manejarRespuesta(data) {
@@ -146,12 +171,13 @@ async function leerRespuestaOMostrarError(res) {
 }
 
 async function responderConfirmacion(confirmar) {
+  const pinEscrito = document.getElementById('modal-pin-input').value.trim();
   modalBackdrop.style.display = 'none';
   if (!pendienteActual) return;
   try {
     const res = await fetch('/api/chat/confirmar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pendiente_id: pendienteActual.pendiente_id, confirmar }),
+      body: JSON.stringify({ pendiente_id: pendienteActual.pendiente_id, confirmar, pin: pinEscrito || null }),
     });
     pendienteActual = null;
     const data = await leerRespuestaOMostrarError(res);
