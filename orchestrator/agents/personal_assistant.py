@@ -66,7 +66,7 @@ def _redactar_borrador(destinatario: str, tema: str, canal: str) -> dict:
 def _listar_contactos_autorizados() -> dict:
     return {
         "contactos": [
-            {"nombre": c.nombre, "alias": c.alias, "activo": c.activo, "canales": list(c.canales)}
+            {"nombre": c.nombre, "alias": c.alias, "activo": c.activo, "canales": dict(c.canales)}
             for c in contacts.listar_todos()
         ]
     }
