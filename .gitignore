@@ -10,6 +10,10 @@ config/contacts.yaml
 # Lista de invitados a la web real (PII) — solo se sube la plantilla .example
 config/invited_users.yaml
 
+# Perfil real de un negocio cliente (datos comerciales del cliente) — solo
+# se sube la plantilla .example
+config/negocio.yaml
+
 # Datos locales (DB, embeddings, sesiones)
 data/*
 !data/.gitkeep

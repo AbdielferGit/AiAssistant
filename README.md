@@ -20,7 +20,8 @@ AiAssistant/
 ├── passenger_wsgi.py         # Punto de entrada para Phusion Passenger (despliegue Bluehost)
 ├── config/
 │   ├── contacts.yaml.example        # Plantilla de la lista blanca de contactos
-│   └── invited_users.yaml.example   # Plantilla de la lista de invitados a la web
+│   ├── invited_users.yaml.example   # Plantilla de la lista de invitados a la web
+│   └── negocio.yaml.example         # Plantilla del perfil de negocio para el agente "recepcionista"
 ├── orchestrator/            # Cerebro del asistente (Python, SDK oficial de Anthropic)
 │   ├── main.py               # Loop genérico de tool-use por terminal — no conoce ningún agente en particular
 │   ├── router.py              # Antes de responder, elige (con Haiku) qué agente le toca al mensaje
@@ -29,7 +30,8 @@ AiAssistant/
 │   ├── agents/                 # Agentes — se autodescubren, no hace falta tocar el orchestrator
 │   │   ├── base.py               # Clase plantilla Agent_0 — instánciala para crear un agente nuevo
 │   │   ├── personal_assistant.py # Agente "asistente" (predeterminado): envía, redacta, agenda
-│   │   └── ceo_analyst.py        # Agente "ceo": Analista de CEO, sin tools (puro análisis)
+│   │   ├── ceo_analyst.py        # Agente "ceo": Analista de CEO, sin tools (puro análisis)
+│   │   └── receptionist.py       # Agente "recepcionista": representa a UN negocio (Accueil+), configurable por config/negocio.yaml
 │   ├── tools/                 # "Herramientas" que el LLM puede invocar
 │   │   ├── google_workspace.py  # Gmail + Calendar + Drive
 │   │   ├── whatsapp.py          # Lista blanca + delega a whatsapp_cloud_api.py
