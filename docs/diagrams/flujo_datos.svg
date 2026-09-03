@@ -1,0 +1,87 @@
+<svg viewBox="0 0 1040 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flujo de datos de AiAssistant: un mensaje del dueño pasa por lista blanca y pide confirmación humana antes de cualquier acción irreversible; un mensaje de un cliente del negocio no tiene lista blanca, solo un límite de mensajes por hora, y el agente recepcionista no tiene tools irreversibles que confirmar. Ambos caminos comparten el mismo núcleo: un agente con el mismo loop de tool-use de Claude.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3A4552"/>
+    </marker>
+    <marker id="arrowTeal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1F6E82"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#B5721E"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1040" height="700" fill="#FFFFFF"/>
+
+  <!-- Lane headers -->
+  <text x="260" y="30" text-anchor="middle" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="12" font-weight="700" letter-spacing="1.5" fill="#1F6E82">ASISTENTE — PRIVADO</text>
+  <text x="780" y="30" text-anchor="middle" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="12" font-weight="700" letter-spacing="1.5" fill="#B5721E">RECEPCIONISTA — PÚBLICO</text>
+
+  <!-- Row 1: origin -->
+  <rect x="60" y="50" width="400" height="60" rx="8" fill="#FFFFFF" stroke="#1F6E82" stroke-width="1.5"/>
+  <text x="260" y="75" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="14" font-weight="600" fill="#1B2027">Tú (dueño del asistente)</text>
+  <text x="260" y="94" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12" fill="#5B6472">terminal (main.py) o login web</text>
+
+  <rect x="580" y="50" width="400" height="60" rx="8" fill="#FFFFFF" stroke="#B5721E" stroke-width="1.5"/>
+  <text x="780" y="75" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="14" font-weight="600" fill="#1B2027">Cliente del negocio</text>
+  <text x="780" y="94" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12" fill="#5B6472">le escribe por WhatsApp</text>
+
+  <line x1="260" y1="110" x2="260" y2="168" stroke="#1F6E82" stroke-width="1.5" marker-end="url(#arrowTeal)"/>
+  <line x1="780" y1="110" x2="780" y2="168" stroke="#B5721E" stroke-width="1.5" marker-end="url(#arrowAmber)"/>
+
+  <!-- Row 2: entry + gate -->
+  <rect x="60" y="170" width="400" height="86" rx="8" fill="#F4F9FA" stroke="#1F6E82" stroke-width="1.5"/>
+  <text x="260" y="193" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="#1B2027">router.py elige el agente</text>
+  <text x="260" y="211" text-anchor="middle" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="11" fill="#1F6E82">contacts.yaml: activo == true</text>
+  <text x="260" y="228" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="#5B6472">si no está en la lista, no hay turno</text>
+  <text x="260" y="246" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="#5B6472">(chequeo en salida Y en entrada)</text>
+
+  <rect x="580" y="170" width="400" height="86" rx="8" fill="#FCF6EC" stroke="#B5721E" stroke-width="1.5"/>
+  <text x="780" y="193" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="#1B2027">webhook público (Render)</text>
+  <text x="780" y="211" text-anchor="middle" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="11" fill="#B5721E">sin lista blanca — acepta a cualquiera</text>
+  <text x="780" y="228" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="#5B6472">tel. o LID (nombre de usuario) — ambos sirven</text>
+  <text x="780" y="246" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="#5B6472">límite: 20 mensajes / hora / remitente</text>
+
+  <line x1="260" y1="256" x2="392" y2="308" stroke="#1F6E82" stroke-width="1.5" marker-end="url(#arrowTeal)"/>
+  <line x1="780" y1="256" x2="648" y2="308" stroke="#B5721E" stroke-width="1.5" marker-end="url(#arrowAmber)"/>
+
+  <!-- Row 3: shared core -->
+  <rect x="170" y="310" width="700" height="72" rx="8" fill="#FAFAF9" stroke="#1B2027" stroke-width="1.5"/>
+  <text x="520" y="336" text-anchor="middle" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="12.5" font-weight="700" letter-spacing="0.5" fill="#1B2027">NÚCLEO COMPARTIDO</text>
+  <text x="520" y="356" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#1B2027">mismo loop de tool-use (SDK oficial de Anthropic) —</text>
+  <text x="520" y="372" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#1B2027">Claude lee el system prompt del agente y decide si invoca una tool</text>
+
+  <line x1="360" y1="382" x2="260" y2="438" stroke="#1F6E82" stroke-width="1.5" marker-end="url(#arrowTeal)"/>
+  <line x1="680" y1="382" x2="780" y2="438" stroke="#B5721E" stroke-width="1.5" marker-end="url(#arrowAmber)"/>
+  <text x="285" y="412" text-anchor="middle" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#1F6E82">agente "asistente"</text>
+  <text x="755" y="412" text-anchor="middle" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#B5721E">agente "recepcionista"</text>
+
+  <!-- Row 4: output gate -->
+  <rect x="60" y="440" width="400" height="96" rx="8" fill="#F4F9FA" stroke="#1F6E82" stroke-width="1.5"/>
+  <text x="260" y="463" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="#1B2027">¿la tool es irreversible?</text>
+  <text x="260" y="482" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="#1B2027">enviar WhatsApp/email, publicar…</text>
+  <text x="260" y="500" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="#1B2027">→ el turno se PAUSA</text>
+  <text x="260" y="518" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="#5B6472">confirmas por input() o por un modal en la web</text>
+
+  <rect x="580" y="440" width="400" height="96" rx="8" fill="#FCF6EC" stroke="#B5721E" stroke-width="1.5"/>
+  <text x="780" y="463" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="#1B2027">sin tools irreversibles, por diseño</text>
+  <text x="780" y="482" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="#1B2027">el recepcionista solo lee/agenda su</text>
+  <text x="780" y="500" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="#1B2027">propio calendario — nada que confirmar</text>
+  <text x="780" y="518" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="#5B6472">responde solo, sin humano en el medio</text>
+
+  <line x1="260" y1="536" x2="260" y2="588" stroke="#1F6E82" stroke-width="1.5" marker-end="url(#arrowTeal)"/>
+  <line x1="780" y1="536" x2="780" y2="588" stroke="#B5721E" stroke-width="1.5" marker-end="url(#arrowAmber)"/>
+  <text x="290" y="566" text-anchor="start" font-family="IBM Plex Sans, sans-serif" font-size="10.5" fill="#5B6472">tras tu confirmación</text>
+  <text x="810" y="566" text-anchor="start" font-family="IBM Plex Sans, sans-serif" font-size="10.5" fill="#5B6472">automático</text>
+
+  <!-- Row 5: destination -->
+  <rect x="60" y="590" width="400" height="62" rx="8" fill="#FFFFFF" stroke="#1F6E82" stroke-width="1.5"/>
+  <text x="260" y="616" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="#1B2027">Gmail · Calendar · Drive</text>
+  <text x="260" y="635" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="#1B2027">WhatsApp · Messenger · tu Mac</text>
+
+  <rect x="580" y="590" width="400" height="62" rx="8" fill="#FFFFFF" stroke="#B5721E" stroke-width="1.5"/>
+  <text x="780" y="616" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="#1B2027">WhatsApp Cloud API</text>
+  <text x="780" y="635" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="#1B2027">responde al cliente del negocio</text>
+
+  <text x="520" y="685" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12" fill="#5B6472">Ambos caminos corren el mismo código de orchestrator/ — lo que cambia es quién puede entrar y qué puede salir sin que tú lo confirmes.</text>
+</svg>

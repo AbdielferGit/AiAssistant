@@ -1,15 +1,25 @@
 # AiAssistant
 
-Asistente personal — Google (email + calendario), WhatsApp/Messenger
-(Meta oficial) y acciones en tu Mac. Se usa desde la terminal, en local.
+Un mismo cerebro (Python, SDK oficial de Anthropic) sirve dos productos
+distintos:
+
+- **Asistente** — tu asistente personal: Google (email + calendario),
+  WhatsApp/Messenger y acciones en tu Mac. Se usa por terminal o por la
+  web privada, y solo habla con contactos que tú autorizaste.
+- **Recepcionista (Accueil+)** — un recepcionista de WhatsApp para UN
+  negocio cliente, configurable por `config/negocio.yaml`, sin código
+  nuevo por cliente. Es público a propósito: le contesta a cualquier
+  desconocido que le escriba al negocio (con límite de mensajes por hora
+  contra abuso, en vez de lista blanca).
 
 ## Empezar aquí
 
 1. Lee [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) para entender cómo encajan las piezas.
 2. Sigue [`MANUAL_CONEXION.md`](MANUAL_CONEXION.md) paso a paso para conectar Google + WhatsApp/Messenger + Mac.
 3. Para usarlo desde el navegador (no solo terminal), ve
-   [`docs/DEPLOY_BLUEHOST.md`](docs/DEPLOY_BLUEHOST.md) — despliegue en
-   Bluehost con login por invitación (`orchestrator/web/`).
+   [`docs/DEPLOY_BLUEHOST.md`](docs/DEPLOY_BLUEHOST.md) — despliegue con
+   login por invitación (`orchestrator/web/`). En producción corre en
+   Render — ver [Despliegue](#despliegue) más abajo.
 
 ## Estructura del repo
 
@@ -40,10 +50,11 @@ AiAssistant/
 │   │   └── macos_actions.py     # AppleScript / Shortcuts desde Python
 │   ├── memory/                 # Estilo de escritura + memoria vectorial
 │   │   ├── vector_store.py
-│   │   └── style_profile.py
+│   │   ├── style_profile.py
+│   │   └── inbound_tracker.py    # Último mensaje entrante por remitente (ventana de 24h de WhatsApp)
 │   ├── webhooks/                # Mensajes ENTRANTES de Meta (WhatsApp Cloud API)
-│   │   └── whatsapp_cloud.py     # FastAPI: webhook de verificación + inbound
-│   └── web/                    # Versión web — acceso remoto solo por invitación
+│   │   └── whatsapp_cloud.py     # FastAPI: webhook del "recepcionista" — público, sin lista blanca, con límite de mensajes/hora (despliegue: Render)
+│   └── web/                    # Versión web del "asistente" — acceso remoto solo por invitación (despliegue: Render)
 │       ├── app.py                # FastAPI: login, chat (mismo router/agentes que main.py), confirmar/cancelar
 │       ├── auth.py                # Google Sign-In + cookie de sesión firmada
 │       ├── invites.py             # Lista blanca de quién puede iniciar sesión
@@ -64,9 +75,28 @@ empieza a considerarlo automáticamente para cada mensaje según su
 `descripcion_enrutador` — no hace falta seleccionarlo a mano salvo que
 quieras fijarlo con `--agente <id>`.
 
+## Despliegue
+
+Dos servicios independientes en Render, cada uno desplegado desde este
+mismo repo (`main`) pero con su propio comando de arranque y sus propias
+variables de entorno:
+
+| Servicio | Punto de entrada | Variables | Notas |
+|---|---|---|---|
+| Web del "asistente" | `uvicorn orchestrator.web.app:app` | `.env` propio | Acceso privado, solo invitados (`config/invited_users.yaml`) |
+| Webhook del "recepcionista" | `uvicorn orchestrator.webhooks.whatsapp_cloud:app` | Environment Group "Recepcionista" (incluye `NEGOCIO_YAML`, el contenido de `config/negocio.yaml` serializado — para hostings sin disco persistente) | Público, sin login; el webhook de Meta apunta directo aquí |
+
+Para un negocio cliente nuevo del recepcionista: no hace falta tocar
+código, solo escribir su `config/negocio.yaml` (o el `NEGOCIO_YAML` del
+Environment Group) y actualizar la Callback URL en Meta for Developers →
+Casos de uso → Conectar en WhatsApp.
+
 ## Estado actual
 
-Esto es un **andamiaje inicial**: la estructura, el manual de conexión y los
-stubs de código están listos. Cada integración (Google, WhatsApp/Messenger)
-necesita que completes credenciales siguiendo el manual antes de que
-funcione de punta a punta.
+El **recepcionista** ya pasó un piloto real de punta a punta (WhatsApp real,
+Meta Cloud API, desplegado en Render) y quedó validado como producto
+funcional para un negocio cliente. El resto — Gmail/Calendar, Messenger,
+acciones en Mac del **asistente** personal — sigue siendo el andamiaje
+inicial: la estructura y los stubs están listos, pero cada integración
+necesita que completes credenciales siguiendo `MANUAL_CONEXION.md` antes de
+que funcione de punta a punta.
