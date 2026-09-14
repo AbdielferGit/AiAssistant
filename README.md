@@ -41,13 +41,18 @@ AiAssistant/
 │   │   ├── base.py               # Clase plantilla Agent_0 — instánciala para crear un agente nuevo
 │   │   ├── personal_assistant.py # Agente "asistente" (predeterminado): envía, redacta, agenda
 │   │   ├── ceo_analyst.py        # Agente "ceo": Analista de CEO, sin tools (puro análisis)
-│   │   └── receptionist.py       # Agente "recepcionista": representa a UN negocio (Accueil+), configurable por config/negocio.yaml
+│   │   ├── receptionist.py       # Agente "recepcionista": representa a UN negocio (Accueil+), configurable por config/negocio.yaml
+│   │   └── reel_producer.py      # Agente "productor_reels": genera los .mp4 de las campañas de FB/IG (narración fr-CA + subtítulo en inglés) — ver orchestrator/tools/reel_generator.py
 │   ├── tools/                 # "Herramientas" que el LLM puede invocar
 │   │   ├── google_workspace.py  # Gmail + Calendar + Drive
 │   │   ├── whatsapp.py          # Lista blanca + delega a whatsapp_cloud_api.py
 │   │   ├── whatsapp_cloud_api.py # Cliente de la WhatsApp Cloud API (Meta, oficial)
 │   │   ├── messenger.py         # Meta Messenger Platform (oficial, solo Páginas)
-│   │   └── macos_actions.py     # AppleScript / Shortcuts desde Python
+│   │   ├── macos_actions.py     # AppleScript / Shortcuts desde Python
+│   │   ├── reel_generator.py    # Voz neuronal fr-CA (Azure Speech) + fondos/íconos/mockups Pillow → .mp4 en data/reels/
+│   │   └── guiones_reels.py     # Guiones de reels ya aprobados (texto fr/en + tema) — evita retipear un guion validado
+│   ├── assets/
+│   │   └── fonts/               # Work Sans (OFL) — tipografía usada para el subtítulo de los reels
 │   ├── memory/                 # Estilo de escritura + memoria vectorial
 │   │   ├── vector_store.py
 │   │   ├── style_profile.py
@@ -61,7 +66,7 @@ AiAssistant/
 │       └── static/                # login.html + index.html (frontend mínimo, sin build)
 ├── mac-bridge/                # AppleScripts para iMessage/Mail/Calendar
 ├── scripts/                  # Setup de Google Cloud, sync a Drive
-└── data/                     # DB local (LanceDB/SQLite) — no se sube a git
+└── data/                     # DB local (LanceDB/SQLite) + data/reels/ (.mp4 generados) — no se sube a git
 ```
 
 ## Agregar un agente nuevo
@@ -100,3 +105,23 @@ acciones en Mac del **asistente** personal — sigue siendo el andamiaje
 inicial: la estructura y los stubs están listos, pero cada integración
 necesita que completes credenciales siguiendo `MANUAL_CONEXION.md` antes de
 que funcione de punta a punta.
+
+El **productor_reels** ya se probó de punta a punta (voz neuronal Azure
+`fr-CA-Sylvie:DragonHDLatestNeural` — la voz "HD", validada contra las
+voces estándar por sonar notablemente menos robótica — animación Pillow,
+render moviepy → `.mp4` en `data/reels/`) y quedó validado: genera un video
+vertical (9:16) real, con narración en francés quebequense y subtítulo en
+inglés, sin romper el arranque del orchestrator si faltan las credenciales
+de Azure. Soporta dos "temas": `rive` (íconos abstractos, Rive
+Intelligente/TaskDoctor) y `aiassistant` (mockups reales del sitio
+AiAssistant by InnovaMontreal, getaiassistant.app — guion ya aprobado en
+`orchestrator/tools/guiones_reels.py`). Sigue el mismo patrón de "nunca
+romper el arranque si falta configuración" que el resto del orchestrator —
+las dependencias pesadas (Pillow, moviepy, Azure Speech SDK) se importan de
+forma perezosa, así que el resto del asistente funciona igual aunque no
+estén instaladas.
+
+Nota conocida: generar un reel de 4 beats con la voz HD falla de forma
+intermitente con un crash nativo (`SIGILL`) — no es determinístico, el
+mismo guion puede fallar una vez y funcionar al reintentar. No se encontró
+la causa raíz; el workaround es simplemente reintentar.
