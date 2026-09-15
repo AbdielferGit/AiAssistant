@@ -21,10 +21,13 @@ en la raíz del repo y `docs/DEPLOY_BLUEHOST.md`.
 """
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import logging
+import os
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import anthropic
@@ -38,6 +41,7 @@ from orchestrator.agents import AGENTES, Agent_0
 from orchestrator.agents.base import system_prompt_con_fecha
 from orchestrator.config import settings
 from orchestrator.router import elegir_agente
+from orchestrator.tools import reel_generator, reels_defaults
 from orchestrator.web import auth
 
 # Tools irreversibles que, además del modal normal, exigen un PIN de un
@@ -79,6 +83,11 @@ MAX_TOKENS = 1536
 _conversaciones: dict[str, list[dict]] = {}
 _pendientes: dict[str, dict] = {}
 
+# Trabajos de generación de reels — en memoria, igual que lo de arriba
+# (mismo comentario aplica: si esto crece, migrar a algo persistente).
+# Un trabajo pasa por "en_progreso" -> "listo" | "error".
+_trabajos_reels: dict[str, dict] = {}
+
 
 class LoginPayload(BaseModel):
     credential: str
@@ -92,6 +101,14 @@ class ConfirmarPayload(BaseModel):
     pendiente_id: str
     confirmar: bool
     pin: str | None = None
+
+
+class ReelGenerarPayload(BaseModel):
+    producto: str  # clave de reels_defaults.PRODUCTOS: "aiassistant" | "taskdoctor" | "rive"
+    nombre_salida: str
+    beats: list[dict] | None = None  # si no viene, usa el guion aprobado del producto
+    proveedor_voz: str | None = None  # None = usa el default de reels_defaults
+    voz_id: str | None = None
 
 
 def _sesion_actual(request: Request) -> dict:
@@ -108,6 +125,17 @@ async def index(request: Request):
         html = html.replace("__GOOGLE_CLIENT_ID__", settings.google_client_id)
         return HTMLResponse(html)
     return FileResponse(_STATIC_DIR / "index.html")
+
+
+@app.get("/reels")
+async def pagina_reels(request: Request):
+    """Herramienta dedicada para generar reels (no el chat) — mismo login
+    que "/", misma cookie de sesión."""
+    if auth.leer_sesion(request.cookies.get(auth.COOKIE_NAME)) is None:
+        html = (_STATIC_DIR / "login.html").read_text(encoding="utf-8")
+        html = html.replace("__GOOGLE_CLIENT_ID__", settings.google_client_id)
+        return HTMLResponse(html)
+    return FileResponse(_STATIC_DIR / "reels.html")
 
 
 @app.post("/auth/google")
@@ -327,3 +355,105 @@ async def _correr_turno_web(sesion_id: str, agente: Agent_0, mensajes: list[dict
             return {"agente": agente.nombre, "texto": texto, "confirmacion_pendiente": confirmacion_pendiente}
 
         mensajes.append({"role": "user", "content": resultados})
+
+
+# --- generación de reels ----------------------------------------------------
+# No pasa por el chat/router — la herramienta en /reels llama esto directo,
+# es más rápido y más simple que hacer que un LLM elija la tool correcta
+# para algo que ya es un formulario. `generar_reel` tarda 1-2 minutos
+# (síntesis de voz + render), así que corre en background (asyncio.to_thread,
+# es código sync/bloqueante) y el frontend hace polling del resultado.
+
+def _ruta_absoluta_reel(ruta_relativa: str) -> Path:
+    return reel_generator.REPO_ROOT / ruta_relativa
+
+
+async def _correr_generacion_reel(job_id: str, payload: ReelGenerarPayload) -> None:
+    try:
+        info_producto = reels_defaults.PRODUCTOS.get(payload.producto)
+        beats = payload.beats or (info_producto or {}).get("guion")
+        if not beats:
+            _trabajos_reels[job_id] = {
+                "status": "error",
+                "detalle": (
+                    f"No hay guion aprobado para '{payload.producto}' — "
+                    "pasá 'beats' en el pedido o elegí un producto que ya tenga uno."
+                ),
+            }
+            return
+        tema = (info_producto or {}).get("tema", payload.producto)
+        proveedor_voz, voz_id = reels_defaults.resolver_voz(payload.proveedor_voz, payload.voz_id)
+
+        resultado = await asyncio.to_thread(
+            reel_generator.generar_reel,
+            beats,
+            payload.nombre_salida,
+            tema=tema,
+            proveedor_voz=proveedor_voz,
+            voz_id=voz_id,
+        )
+
+        if resultado.get("status") == "generado":
+            carpeta_drive = os.getenv("GOOGLE_DRIVE_REELS_FOLDER_ID", "")
+            if carpeta_drive:
+                try:
+                    from orchestrator.tools.google_workspace import subir_a_drive
+
+                    ruta_abs = _ruta_absoluta_reel(resultado["ruta"])
+                    resultado["drive"] = await asyncio.to_thread(subir_a_drive, str(ruta_abs), carpeta_drive)
+                except Exception as exc:  # nunca tirar el trabajo entero por el paso de Drive
+                    log.warning("No se pudo subir el reel a Drive: %s", exc)
+                    resultado["drive"] = {"status": "error", "detalle": str(exc)}
+            _trabajos_reels[job_id] = {"status": "listo", "resultado": resultado}
+        else:
+            _trabajos_reels[job_id] = {"status": "error", "detalle": resultado.get("detalle", "Error desconocido.")}
+    except Exception as exc:
+        log.exception("Fallo generando reel (job %s)", job_id)
+        _trabajos_reels[job_id] = {"status": "error", "detalle": str(exc)}
+
+
+@app.post("/api/reels/generar")
+async def reels_generar(payload: ReelGenerarPayload, request: Request):
+    _sesion_actual(request)  # exige sesión — no valida nada del payload en sí
+    job_id = str(uuid.uuid4())
+    _trabajos_reels[job_id] = {"status": "en_progreso", "iniciado": datetime.now(timezone.utc).isoformat()}
+    asyncio.create_task(_correr_generacion_reel(job_id, payload))
+    return {"job_id": job_id}
+
+
+@app.get("/api/reels/estado/{job_id}")
+async def reels_estado(job_id: str, request: Request):
+    _sesion_actual(request)
+    trabajo = _trabajos_reels.get(job_id)
+    if trabajo is None:
+        raise HTTPException(status_code=404, detail="job_id desconocido.")
+    return trabajo
+
+
+@app.get("/api/reels/video/{job_id}")
+async def reels_video(job_id: str, request: Request):
+    _sesion_actual(request)
+    trabajo = _trabajos_reels.get(job_id)
+    if trabajo is None or trabajo.get("status") != "listo":
+        raise HTTPException(status_code=404, detail="Todavía no hay video listo para este job_id.")
+    ruta = _ruta_absoluta_reel(trabajo["resultado"]["ruta"])
+    if not ruta.exists():
+        raise HTTPException(status_code=404, detail="El archivo ya no existe en el servidor.")
+    return FileResponse(ruta, media_type="video/mp4", filename=ruta.name)
+
+
+@app.get("/api/reels/productos")
+async def reels_productos(request: Request):
+    """Metadata de cada producto (tema, url_fuente, si ya tiene guion
+    aprobado) — el frontend la usa para armar el selector sin hardcodear
+    nada de reels_defaults.py en el HTML."""
+    _sesion_actual(request)
+    return {
+        nombre: {
+            "tema": datos["tema"],
+            "url_fuente": datos["url_fuente"],
+            "tiene_guion": datos["guion"] is not None,
+            "beats": datos["guion"],
+        }
+        for nombre, datos in reels_defaults.PRODUCTOS.items()
+    }

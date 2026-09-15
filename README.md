@@ -61,12 +61,12 @@ AiAssistant/
 │   ├── webhooks/                # Mensajes ENTRANTES de Meta (WhatsApp Cloud API)
 │   │   └── whatsapp_cloud.py     # FastAPI: webhook del "recepcionista" — público, sin lista blanca, con límite de mensajes/hora (despliegue: Render)
 │   └── web/                    # Versión web del "asistente" — acceso remoto solo por invitación (despliegue: Render)
-│       ├── app.py                # FastAPI: login, chat (mismo router/agentes que main.py), confirmar/cancelar
+│       ├── app.py                # FastAPI: login, chat (mismo router/agentes que main.py), confirmar/cancelar, y /reels (herramienta de generación de reels, sube a Drive)
 │       ├── auth.py                # Google Sign-In + cookie de sesión firmada
 │       ├── invites.py             # Lista blanca de quién puede iniciar sesión
-│       └── static/                # login.html + index.html (frontend mínimo, sin build)
+│       └── static/                # login.html + index.html (chat) + reels.html (herramienta de reels) — frontend mínimo, sin build
 ├── mac-bridge/                # AppleScripts para iMessage/Mail/Calendar
-├── scripts/                  # Setup de Google Cloud, sync a Drive
+├── scripts/                  # Setup de Google Cloud, sync a Drive, reautorizar_google.py (reautoriza Gmail/Calendar/Drive sin pasar por el chat)
 └── data/                     # DB local (LanceDB/SQLite) + data/reels/ (.mp4 generados) — no se sube a git
 ```
 
@@ -126,6 +126,15 @@ configuración" que el resto del orchestrator — las dependencias pesadas
 (Pillow, moviepy, Azure Speech SDK, httpx para ElevenLabs) se importan de
 forma perezosa, así que el resto del asistente funciona igual aunque no
 estén instaladas.
+
+Además del agente en el chat, hay una **herramienta web dedicada** en
+`/reels` (ver `orchestrator/web/app.py` + `static/reels.html`, mismo login
+que el chat): elegís producto, generás, y el video aparece en el
+navegador con reproductor y descarga. Si `GOOGLE_DRIVE_REELS_FOLDER_ID`
+está configurado, cada reel se sube solo a esa carpeta de Drive
+(reutiliza `subir_a_drive` de `google_workspace.py`) — probado de punta a
+punta contra una carpeta real. Corre en background (no bloquea el
+servidor mientras renderiza) con polling desde el frontend.
 
 Nota conocida: generar un reel de 4 beats con la voz HD falla de forma
 intermitente con un crash nativo (`SIGILL`) — no es determinístico, el
