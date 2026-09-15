@@ -95,6 +95,7 @@ class LoginPayload(BaseModel):
 
 class ChatPayload(BaseModel):
     mensaje: str
+    agente_id: str | None = None  # None = deja que el enrutador (Haiku) elija, como antes
 
 
 class ConfirmarPayload(BaseModel):
@@ -109,6 +110,12 @@ class ReelGenerarPayload(BaseModel):
     beats: list[dict] | None = None  # si no viene, usa el guion aprobado del producto
     proveedor_voz: str | None = None  # None = usa el default de reels_defaults
     voz_id: str | None = None
+
+
+def _clave_conversacion(sesion_id: str, agente_id: str) -> str:
+    """Cada (invitado, agente) tiene su propio historial — así el panel
+    lateral puede tener una conversación por agente sin que se mezclen."""
+    return f"{sesion_id}::{agente_id}"
 
 
 def _sesion_actual(request: Request) -> dict:
@@ -203,18 +210,39 @@ def _cancelar_pendientes_de_sesion(sesion_id: str) -> None:
                 ),
             }
         )
-        _conversaciones.setdefault(sesion_id, []).append({"role": "user", "content": resultados})
+        clave = _clave_conversacion(sesion_id, pendiente["agente_id"])
+        _conversaciones.setdefault(clave, []).append({"role": "user", "content": resultados})
+
+
+@app.get("/api/agentes")
+async def listar_agentes(request: Request):
+    """Para el panel lateral — el frontend arma la lista de agentes
+    seleccionables con esto en vez de tenerlos hardcodeados en el HTML."""
+    _sesion_actual(request)
+    return [
+        {"id": a.id, "nombre": a.nombre, "descripcion": a.descripcion_enrutador, "predeterminado": a.es_predeterminado}
+        for a in AGENTES.values()
+    ]
 
 
 @app.post("/api/chat")
 async def chat(payload: ChatPayload, request: Request):
     sesion = _sesion_actual(request)
-    sesion_id = sesion["correo"]  # una conversación por invitado — simple y suficiente hoy
+    sesion_id = sesion["correo"]  # una conversación por invitado (y por agente, ver _clave_conversacion)
+
+    if payload.agente_id:
+        if payload.agente_id not in AGENTES:
+            raise HTTPException(status_code=400, detail=f"Agente desconocido: {payload.agente_id!r}")
+        agente = AGENTES[payload.agente_id]
+    else:
+        # Compatibilidad hacia atrás: sin agente_id, se comporta como
+        # siempre — el enrutador (Haiku) elige según el mensaje.
+        agente = await elegir_agente(payload.mensaje, AGENTES)
+
     _cancelar_pendientes_de_sesion(sesion_id)
-    mensajes = _conversaciones.setdefault(sesion_id, [])
+    mensajes = _conversaciones.setdefault(_clave_conversacion(sesion_id, agente.id), [])
     mensajes.append({"role": "user", "content": payload.mensaje})
 
-    agente = await elegir_agente(payload.mensaje, AGENTES)
     return await _correr_turno_web(sesion_id, agente, mensajes)
 
 
@@ -226,8 +254,8 @@ async def confirmar(payload: ConfirmarPayload, request: Request):
         raise HTTPException(status_code=404, detail="No hay ninguna confirmación pendiente con ese id")
 
     sesion_id = pendiente["sesion_id"]
-    mensajes = _conversaciones[sesion_id]
     agente = AGENTES[pendiente["agente_id"]]
+    mensajes = _conversaciones[_clave_conversacion(sesion_id, agente.id)]
 
     confirmar = payload.confirmar
     if confirmar and pendiente.get("pin_requerido") and payload.pin != pendiente["pin_requerido"]:

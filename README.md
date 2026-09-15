@@ -27,7 +27,8 @@ distintos:
 AiAssistant/
 ├── MANUAL_CONEXION.md       # Manual paso a paso (Google + WhatsApp/Messenger + Mac)
 ├── .env.example             # Variables de entorno necesarias
-├── passenger_wsgi.py         # Punto de entrada para Phusion Passenger (despliegue Bluehost)
+├── passenger_wsgi.py         # Punto de entrada para Phusion Passenger (despliegue Bluehost, descartado — ver docs/DEPLOY_BLUEHOST.md)
+├── render.yaml                # Blueprint de Render para el servicio "asistente web" — ver docs/DEPLOY_RENDER.md
 ├── config/
 │   ├── contacts.yaml.example        # Plantilla de la lista blanca de contactos
 │   ├── invited_users.yaml.example   # Plantilla de la lista de invitados a la web
@@ -97,6 +98,11 @@ código, solo escribir su `config/negocio.yaml` (o el `NEGOCIO_YAML` del
 Environment Group) y actualizar la Callback URL en Meta for Developers →
 Casos de uso → Conectar en WhatsApp.
 
+La web del "asistente" (chat con panel lateral para elegir agente +
+`/reels`) todavía no está desplegada — `render.yaml` en la raíz del repo
+la arma casi sola como Blueprint de Render, ver el paso a paso completo en
+[`docs/DEPLOY_RENDER.md`](docs/DEPLOY_RENDER.md).
+
 ## Estado actual
 
 El **recepcionista** ya pasó un piloto real de punta a punta (WhatsApp real,
@@ -135,6 +141,13 @@ está configurado, cada reel se sube solo a esa carpeta de Drive
 (reutiliza `subir_a_drive` de `google_workspace.py`) — probado de punta a
 punta contra una carpeta real. Corre en background (no bloquea el
 servidor mientras renderiza) con polling desde el frontend.
+
+El chat (`/`) tiene un **panel lateral con los 4 agentes** (`asistente`,
+`ceo`, `recepcionista`, `productor_reels` — se arma solo desde
+`/api/agentes`, nunca hardcodeado): elegís cuál usar y le hablás directo,
+sin depender del enrutador automático. Cada agente tiene su propio
+historial de conversación (probado: cambiar de agente y volver no mezcla
+nada) — el servidor lo separa por `(invitado, agente)`.
 
 Nota conocida: generar un reel de 4 beats con la voz HD falla de forma
 intermitente con un crash nativo (`SIGILL`) — no es determinístico, el

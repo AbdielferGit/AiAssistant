@@ -10,13 +10,36 @@
   body {
     font-family: -apple-system, BlinkMacSystemFont, sans-serif;
     margin: 0; background: #0f172a; color: #e2e8f0;
-    display: flex; flex-direction: column; height: 100vh;
+    display: flex; flex-direction: row; height: 100vh; overflow: hidden;
   }
+  #sidebar {
+    width: 230px; flex-shrink: 0; border-right: 1px solid #1e293b;
+    display: flex; flex-direction: column; padding: 1rem .75rem; gap: .3rem; overflow-y: auto;
+  }
+  #sidebar h2 {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+    color: #64748b; margin: .3rem .5rem .5rem;
+  }
+  .agente-btn {
+    text-align: left; background: none; border: 1px solid transparent; color: #94a3b8;
+    padding: .6rem .7rem; border-radius: 8px; cursor: pointer; font-size: .85rem; font-weight: 500;
+  }
+  .agente-btn:hover { background: #1e293b; }
+  .agente-btn.activo { background: #1e293b; color: #e2e8f0; border-color: #334155; }
+  .agente-btn small { display: block; color: #64748b; font-size: .72rem; font-weight: 400; margin-top: 3px; line-height: 1.3; }
+  #sidebar-footer { margin-top: auto; padding: .5rem; }
+  #sidebar a.reels-link {
+    display: block; color: #94a3b8; font-size: .82rem; text-decoration: none;
+    padding: .5rem .7rem; border-radius: 8px;
+  }
+  #sidebar a.reels-link:hover { background: #1e293b; }
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   header {
     display: flex; justify-content: space-between; align-items: center;
     padding: .9rem 1.25rem; border-bottom: 1px solid #1e293b; flex-shrink: 0;
   }
   header h1 { font-size: 1rem; margin: 0; }
+  header .sub { font-size: .78rem; color: #64748b; margin-top: 1px; }
   #logout {
     background: none; border: 1px solid #334155; color: #94a3b8;
     padding: .35rem .75rem; border-radius: 8px; cursor: pointer; font-size: .8rem;
@@ -52,18 +75,28 @@
 </style>
 </head>
 <body>
-<header>
-  <h1>AiAssistant</h1>
-  <div style="display:flex; gap:.6rem; align-items:center">
-    <a href="/reels" style="color:#94a3b8; font-size:.85rem; text-decoration:none">🎬 Reels</a>
-    <button id="logout">Cerrar sesión</button>
+<aside id="sidebar">
+  <h2>Agentes</h2>
+  <div id="lista-agentes"></div>
+  <div id="sidebar-footer">
+    <a class="reels-link" href="/reels">🎬 Generador de reels</a>
   </div>
+</aside>
+
+<div id="main">
+<header>
+  <div>
+    <h1 id="titulo-agente">AiAssistant</h1>
+    <div class="sub" id="subtitulo-agente"></div>
+  </div>
+  <button id="logout">Cerrar sesión</button>
 </header>
 <div id="chat"></div>
 <form id="form">
   <input type="text" id="input" placeholder="Escribe un mensaje..." autocomplete="off" required>
   <button type="submit">Enviar</button>
 </form>
+</div>
 
 <div id="modal-backdrop">
   <div id="modal">
@@ -89,13 +122,83 @@ const inputEl = document.getElementById('input');
 const modalBackdrop = document.getElementById('modal-backdrop');
 let pendienteActual = null;
 
-function agregarMensaje(texto, clase) {
-  const div = document.createElement('div');
-  div.className = 'msg ' + clase;
-  div.textContent = texto;
-  chatEl.appendChild(div);
+// Un agente = un hilo de conversación propio. El servidor ya separa el
+// historial real por (invitado, agente) — esto acá es solo la copia del
+// lado del navegador para poder mostrar cada hilo instantáneo al cambiar
+// de agente en el panel, sin ir a pedirle nada al servidor.
+let agentes = [];
+let agenteActual = null;
+const historiales = {}; // agente_id -> [{texto, clase}]
+
+function historialDe(id) {
+  if (!historiales[id]) historiales[id] = [];
+  return historiales[id];
+}
+
+function renderizarChatActual() {
+  chatEl.innerHTML = '';
+  for (const { texto, clase } of historialDe(agenteActual)) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + clase;
+    div.textContent = texto;
+    chatEl.appendChild(div);
+  }
   chatEl.scrollTop = chatEl.scrollHeight;
-  return div;
+}
+
+function agregarMensaje(texto, clase, agenteId = agenteActual) {
+  historialDe(agenteId).push({ texto, clase });
+  if (agenteId === agenteActual) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + clase;
+    div.textContent = texto;
+    chatEl.appendChild(div);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+  return null;
+}
+
+function actualizarBotonesActivos() {
+  document.querySelectorAll('.agente-btn').forEach((btn) => {
+    btn.classList.toggle('activo', btn.dataset.agenteId === agenteActual);
+  });
+}
+
+function seleccionarAgente(id) {
+  if (pendienteActual) {
+    // Cambiar de agente con una confirmación pendiente abierta la deja
+    // huérfana del lado del navegador (el servidor igual la cancela
+    // solo en el próximo mensaje de esa sesión, ver
+    // _cancelar_pendientes_de_sesion) — cerramos el modal para no
+    // confundir sobre a qué agente pertenece.
+    modalBackdrop.style.display = 'none';
+    pendienteActual = null;
+  }
+  agenteActual = id;
+  const info = agentes.find((a) => a.id === id);
+  document.getElementById('titulo-agente').textContent = info ? info.nombre : id;
+  document.getElementById('subtitulo-agente').textContent = info ? info.descripcion : '';
+  renderizarChatActual();
+  actualizarBotonesActivos();
+  inputEl.focus();
+}
+
+async function cargarAgentes() {
+  const res = await fetch('/api/agentes');
+  if (res.status === 401) { window.location.href = '/'; return; }
+  agentes = await res.json();
+  const lista = document.getElementById('lista-agentes');
+  lista.innerHTML = '';
+  for (const a of agentes) {
+    const btn = document.createElement('button');
+    btn.className = 'agente-btn';
+    btn.dataset.agenteId = a.id;
+    btn.innerHTML = a.nombre + (a.descripcion ? '<small>' + a.descripcion.slice(0, 70) + (a.descripcion.length > 70 ? '…' : '') + '</small>' : '');
+    btn.addEventListener('click', () => seleccionarAgente(a.id));
+    lista.appendChild(btn);
+  }
+  const porDefecto = agentes.find((a) => a.predeterminado) || agentes[0];
+  if (porDefecto) seleccionarAgente(porDefecto.id);
 }
 
 function mostrarPendiente(pendiente) {
@@ -134,7 +237,7 @@ formEl.addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mensaje }),
+      body: JSON.stringify({ mensaje, agente_id: agenteActual }),
     });
     const data = await leerRespuestaOMostrarError(res);
     if (data) await manejarRespuesta(data);
@@ -198,6 +301,8 @@ document.getElementById('logout').addEventListener('click', async () => {
   await fetch('/auth/logout', { method: 'POST' });
   window.location.href = '/';
 });
+
+cargarAgentes();
 </script>
 </body>
 </html>
