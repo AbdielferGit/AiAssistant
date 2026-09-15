@@ -1,15 +1,21 @@
 """Agente "productor_reels" — genera los reels animados (9:16) de las
-campañas de Facebook/Instagram. Soporta dos "temas" (marca + paleta +
+campañas de Facebook/Instagram. Soporta tres "temas" (marca + paleta +
 vocabulario de `visual`):
 
-- **rive**: Rive Intelligente / TaskDoctor (proyecto de prospección
+- **rive**: Rive Intelligente (proyecto de prospección
   BecameGrowthPartner/Prospection — ver templates/redes_sociales/ de ese
   repo). Íconos abstractos dibujados a mano (ver ICON_VISUALES en
-  reel_generator.py).
+  reel_generator.py). Sin guion aprobado ni sitio propio todavía.
 - **aiassistant**: AiAssistant by InnovaMontreal (getaiassistant.app, sitio
-  real del usuario). Mockups realistas del sitio (ver MOCKUP_VISUALES en
-  reel_generator.py) — contenido verificado en vivo contra el sitio, no
-  inventado.
+  real del usuario). Mockups realistas del sitio (ver MOCKUP_VISUALES).
+- **taskdoctor**: TaskDoctor.ai (extensión de Chrome gratuita, sitio real
+  del usuario). Mockups realistas del sitio, paleta crema/naranja.
+
+Todos los parámetros por defecto (voz, ritmo/pausa, URL fuente de cada
+producto, y el guion ya aprobado si existe) viven en
+`orchestrator/tools/reels_defaults.py` — ESE ARCHIVO TIENE PRIORIDAD.
+Este agente lo consulta antes de improvisar nada; ver `_generar_reel` y
+`reels_defaults.resolver_voz`.
 
 Diferencia con los demás agentes: no conversa con un cliente ni actúa en
 nombre del usuario en canales externos — su única salida es un archivo
@@ -19,23 +25,24 @@ Regla de idioma, NO NEGOCIABLE (viene de la instrucción original del
 proyecto): la narración es SIEMPRE en francés con voz quebequense
 (fr-CA) — nunca francés de Francia. El subtítulo en pantalla es SIEMPRE
 en inglés. Nunca al revés, nunca los dos idiomas como texto a la vez. Si
-el usuario pide un guion que ya trae ambos idiomas (como los .md de
-campana_sitio_web_solo/, o los mockups de tema "aiassistant" que muestran
-texto real del sitio), el campo `fr` de cada beat es lo que se narra y
-`en` es lo que se subtitula — se usan tal cual vienen, no se traducen de
-nuevo.
+el usuario pide un guion que ya trae ambos idiomas (como los mockups de
+tema "aiassistant"/"taskdoctor" que muestran texto real de un sitio), el
+campo `fr` de cada beat es lo que se narra y `en` es lo que se
+subtitula — se usan tal cual vienen, no se traducen de nuevo.
 
-Voz por defecto: fr-CA-Sylvie:DragonHDLatestNeural (Azure "HD", ver
-reel_generator.VOZ_FR_CA_POR_DEFECTO) — validada por el usuario sobre las
-voces estándar (Sylvie/Antoine/Jean/Thierry neural), suena notablemente
-menos robótica. OJO: la documentación de Azure dice que las voces HD
-ignoran <prosody>/<emphasis> — es FALSO, verificado en la práctica (ver
-comentario en reel_generator.py). No asumir limitaciones de la doc de
-Azure sin probar en vivo primero."""
+Voz por defecto: ElevenLabs (ver reels_defaults.PROVEEDOR_VOZ_POR_DEFECTO /
+ELEVENLABS_VOZ_ID_POR_DEFECTO) — una voz de su Voice Library elegida a
+mano por el usuario tras comparar contra las voces estándar y "HD" de
+Azure. Azure sigue disponible como fallback (ver
+reel_generator.VOZ_FR_CA_POR_DEFECTO) si ElevenLabs no está disponible.
+OJO: la documentación de Azure dice que sus voces HD ignoran
+<prosody>/<emphasis> — es FALSO, verificado en la práctica (ver
+comentario en reel_generator.py). No asumir limitaciones de una doc sin
+probar en vivo primero."""
 from __future__ import annotations
 
 from orchestrator.agents.base import Agent_0
-from orchestrator.tools import guiones_reels, reel_generator
+from orchestrator.tools import reel_generator, reels_defaults
 
 SYSTEM_PROMPT = """\
 Eres el agente productor de reels. Generas videos verticales (9:16) para
@@ -50,85 +57,92 @@ esto ni lo inviertas, aunque el usuario te pida "cámbialo" sin ser
 explícito sobre cuál campo cambiar — confirma antes de invertir el idioma
 de la voz o del subtítulo.
 
+ANTES DE HACER NADA: `orchestrator/tools/reels_defaults.py` tiene
+prioridad sobre lo que vos improvises — ahí está la voz por defecto
+(proveedor + id), el ritmo/pausa, y para cada producto (aiassistant,
+taskdoctor, rive) su URL real y su guion ya aprobado si existe
+(`reels_defaults.PRODUCTOS[producto]`). Si el usuario pide "el reel de
+X" sin dar guion nuevo, usa el guion de `PRODUCTOS[X]["guion"]` en vez de
+inventar uno — y si es `None`, avisale que no hay uno aprobado todavía y
+pedile el contenido (no inventes texto de marketing).
+
 Cada guion tiene un `tema` — decide la marca, la paleta y qué valores de
 `visual` son válidos para ese beat:
 
-- `tema="rive"` (default si el usuario no dice nada y el pedido es sobre
-  Rive Intelligente/TaskDoctor): `visual` es uno de
+- `tema="rive"` (Rive Intelligente): `visual` es uno de
   "simplify" (puntos que convergen — empezar simple/antes de algo complejo),
   "search" (lupa sobre barra de búsqueda — SEO/visibilidad),
   "clock" (reloj + íconos apareciendo — disponible a toda hora/contacto),
   "chat" (burbuja de chat + destello — el agente de IA),
   "cta" (sobre abriéndose + insignia — cierre/llamado a la acción).
 
-- `tema="aiassistant"` (para AiAssistant by InnovaMontreal,
-  getaiassistant.app — usa este tema cuando el usuario lo pida a él por
-  nombre o pegue contenido de ese sitio): `visual` es uno de
-  "mockup_hero" (portada real del sitio — título + CTA),
-  "mockup_roadmap" (la hoja de ruta real — 3 pasos + progreso 68%),
-  "mockup_chat" (¡OJO! esto es un CONCEPTO, getaiassistant.app NO tiene
-  chat en vivo todavía — el mockup ya lo marca en pantalla como "CONCEPT ·
-  COMING SOON"; nunca le digas al usuario ni le hagas creer que el chat ya
-  existe como feature real),
-  "mockup_form" (el formulario real de diagnóstico — mismos campos y
-  placeholders que el sitio).
-  El texto en/fr de los mockups debe ser el copy REAL del sitio (verifica
-  con el usuario o con la página si no lo tienes) — no inventes headlines
-  ni cifras nuevas para estos beats, son capturas conceptuales de un
-  producto real.
-  Ya existe un guion aprobado por el usuario para este tema en
-  `orchestrator/tools/guiones_reels.GUION_AIASSISTANT_LANZAMIENTO` — si
-  el usuario pide "el reel de AiAssistant" sin dar guion nuevo, usa ese
-  (con tema=guiones_reels.TEMA_AIASSISTANT) en vez de inventar uno.
+- `tema="aiassistant"` (AiAssistant by InnovaMontreal, getaiassistant.app):
+  `visual` es uno de "mockup_hero" (portada real — título + CTA),
+  "mockup_roadmap" (hoja de ruta real — 3 pasos + progreso 68%),
+  "mockup_chat" (¡OJO! CONCEPTO — getaiassistant.app NO tiene chat en vivo
+  todavía, el mockup ya lo marca en pantalla como "CONCEPT · COMING SOON";
+  nunca le digas al usuario que el chat ya existe como feature real),
+  "mockup_form" (formulario real de diagnóstico).
 
-No inventes el `visual` fuera de la lista del tema que corresponda.
-Elige el que mejor encaje con el contenido de cada beat — si el usuario no
-lo especifica, infiere del texto.
+- `tema="taskdoctor"` (TaskDoctor.ai): `visual` es uno de
+  "mockup_td_hero" (portada real — título + 3 garantías de privacidad + CTA),
+  "mockup_td_dashboard" (panel real "This Week" — 32%, 12.4h, $620/semana,
+  4 fuentes de fricción), "mockup_td_privacy" (cuadrícula real de 6
+  garantías "No ___" — todo real, no es concepto), "mockup_td_cta" (cierre
+  — instalar la extensión).
+
+No mezcles los vocabularios de `visual` de distintos temas en un mismo
+guion. El texto fr/en de cualquier mockup debe ser copy REAL del sitio
+correspondiente (usa `reels_defaults.PRODUCTOS[producto]["url_fuente"]` si
+necesitás verificar contra la página en vivo) — no inventes headlines ni
+cifras nuevas para estos beats.
 
 Para que la narración suene natural y motivadora (no plana ni robótica),
-usa estos dos marcadores al escribir el `fr` de cada beat — se procesan
-como pausas/énfasis reales, nunca se leen en voz alta:
-- `||` = pausa de respiración antes de lo que sigue. Úsalo antes del
-  remate o el llamado a la acción del beat: "Avant un gros projet d'IA, ||
-  il y a une étape plus simple." No abuses — el usuario ya ajustó esto a
-  mano en varios guiones y a veces prefiere la frase corrida, sin pausas.
-- `**así**` = énfasis en esa palabra o frase — la que le da la fuerza
-  motivadora a la oración. Máximo 1 por beat; más de eso suena forzado.
+usa estos dos marcadores al escribir el `fr` de cada beat:
+- `||` = pausa de respiración antes de lo que sigue. No abuses — el
+  usuario a veces prefiere la frase corrida, sin pausas.
+- `**así**` = énfasis en la palabra/frase que le da la fuerza motivadora.
+  Máximo 1 por beat.
 Las oraciones que terminan en "?" ya reciben automáticamente una
-entonación ascendente (de pregunta real) — no hace falta marcarlas.
-La plantilla de audio (ritmo, duración de la pausa "||") vive en
-reel_generator.PLANTILLA_RITMO_PCT / PLANTILLA_PAUSA_MS — ya está calibrada
-a oído por el usuario, no la cambies sin que te lo pidan explícitamente.
-
-Antes de generar, si el usuario no dio un guion completo (fr + en +
-visual por cada beat), pídeselo o propón uno breve basado en lo que
-menciona — no inventes contenido de marketing sin que el usuario lo
-valide, sobre todo cifras de resultados.
+entonación ascendente — no hace falta marcarlas. Estos dos marcadores
+funcionan distinto según el proveedor de voz: con Azure se traducen a
+SSML real (`<break>`/`<emphasis>`, con el ritmo/pausa de
+reels_defaults.AZURE_RITMO_PCT/AZURE_PAUSA_MS); con ElevenLabs `||` se
+convierte en una elipsis (pausa natural) y `**texto**` se desenvuelve a
+texto plano — no hay control de ritmo con ElevenLabs.
 
 Cuando tengas el guion, llama a `generar_reel` con la lista de beats, un
-`nombre_salida` corto y descriptivo (ej. "sitio_web_semana_01") y el
-`tema` que corresponda. No es una acción irreversible — solo crea un
-archivo nuevo — así que no hace falta pedir confirmación aparte, pero sí
-avisa cuánto puede tardar (la síntesis de voz y el renderizado no son
+`nombre_salida` corto y descriptivo, y el `tema` que corresponda. Dejá
+`proveedor_voz`/`voz_id` sin especificar salvo que el usuario pida
+explícitamente otra voz — se completan solos con los defaults de
+reels_defaults.py. No es una acción irreversible — solo crea un archivo
+nuevo — así que no hace falta pedir confirmación aparte, pero sí avisa
+cuánto puede tardar (la síntesis de voz y el renderizado no son
 instantáneos) y qué vas a hacer antes de llamarla.
 
 Después de generar, dile al usuario la ruta del archivo (relativa a la
 raíz del repo) y la duración — no digas que ya está "publicado" ni
 "subido a Instagram": esto solo produce el archivo .mp4 local, subirlo a
-Meta lo hace el usuario manualmente, igual que con los borradores de
-correo del proyecto de prospección.
+Meta lo hace el usuario manualmente.
 
 Nota técnica que quizás tengas que explicarle al usuario si pregunta: la
-generación de reels de 4 beats con la voz HD a veces falla con un crash
-nativo intermitente (no determinístico — el mismo guion puede fallar una
-vez y funcionar al reintentar). Si `generar_reel` devuelve status="error"
-con algo que no sea un mensaje claro de configuración faltante, sugiere
+generación de reels de 4 beats a veces falla con un crash nativo
+intermitente (no determinístico — el mismo guion puede fallar una vez y
+funcionar al reintentar). Si `generar_reel` devuelve status="error" con
+algo que no sea un mensaje claro de configuración faltante, sugiere
 reintentar antes de asumir que el guion está mal.
 """
 
 
-def _generar_reel(beats: list[dict], nombre_salida: str, tema: str = "rive") -> dict:
-    return reel_generator.generar_reel(beats, nombre_salida, tema=tema)
+def _generar_reel(
+    beats: list[dict],
+    nombre_salida: str,
+    tema: str = "rive",
+    proveedor_voz: str | None = None,
+    voz_id: str | None = None,
+) -> dict:
+    proveedor_voz, voz_id = reels_defaults.resolver_voz(proveedor_voz, voz_id)
+    return reel_generator.generar_reel(beats, nombre_salida, tema=tema, proveedor_voz=proveedor_voz, voz_id=voz_id)
 
 
 TOOL_FUNCS = {
@@ -140,9 +154,10 @@ TOOL_SCHEMAS = [
         "name": "generar_reel",
         "description": (
             "Genera un video vertical (9:16) en data/reels/{nombre_salida}.mp4: "
-            "narra cada beat.fr con voz neuronal francesa quebequense (fr-CA) y "
-            "dibuja beat.en como subtítulo en pantalla, con una animación o mockup "
-            "por beat según beat.visual y el `tema` elegido. Puede tardar uno o dos "
+            "narra cada beat.fr con voz quebequense (fr-CA) y dibuja beat.en como "
+            "subtítulo en pantalla, con una animación o mockup por beat según "
+            "beat.visual y el `tema` elegido. Si no se especifica proveedor_voz/"
+            "voz_id, usa los defaults de reels_defaults.py. Puede tardar uno o dos "
             "minutos por la síntesis de voz y el renderizado — con 4 beats a veces "
             "falla con un crash intermitente y funciona al reintentar, no es un bug "
             "del guion. No es irreversible — solo crea un archivo nuevo."
@@ -160,12 +175,18 @@ TOOL_SCHEMAS = [
                             "en": {"type": "string", "description": "Texto que se muestra como subtítulo (inglés). Nunca se narra."},
                             "visual": {
                                 "type": "string",
-                                "enum": ["simplify", "search", "clock", "chat", "cta", "mockup_hero", "mockup_roadmap", "mockup_chat", "mockup_form"],
+                                "enum": [
+                                    "simplify", "search", "clock", "chat", "cta",
+                                    "mockup_hero", "mockup_roadmap", "mockup_chat", "mockup_form",
+                                    "mockup_td_hero", "mockup_td_dashboard", "mockup_td_privacy", "mockup_td_cta",
+                                ],
                                 "description": (
                                     "Qué se dibuja durante este beat. \"simplify\"/\"search\"/\"clock\"/\"chat\"/\"cta\" "
                                     "son íconos abstractos (tema=\"rive\"). \"mockup_hero\"/\"mockup_roadmap\"/"
-                                    "\"mockup_chat\"/\"mockup_form\" son mockups del sitio real de AiAssistant "
-                                    "(tema=\"aiassistant\") — no mezclar los dos vocabularios en un mismo guion."
+                                    "\"mockup_chat\"/\"mockup_form\" son mockups de AiAssistant (tema=\"aiassistant\"). "
+                                    "\"mockup_td_hero\"/\"mockup_td_dashboard\"/\"mockup_td_privacy\"/\"mockup_td_cta\" "
+                                    "son mockups de TaskDoctor (tema=\"taskdoctor\"). No mezclar vocabularios de temas "
+                                    "distintos en un mismo guion."
                                 ),
                             },
                         },
@@ -178,11 +199,27 @@ TOOL_SCHEMAS = [
                 },
                 "tema": {
                     "type": "string",
-                    "enum": ["rive", "aiassistant"],
+                    "enum": ["rive", "aiassistant", "taskdoctor"],
                     "description": (
-                        "Marca/paleta/vocabulario de `visual` del reel. \"rive\" (default) = "
-                        "Rive Intelligente/TaskDoctor, íconos abstractos. \"aiassistant\" = "
-                        "AiAssistant by InnovaMontreal (getaiassistant.app), mockups reales del sitio."
+                        "Marca/paleta/vocabulario de `visual` del reel. \"rive\" = Rive "
+                        "Intelligente, íconos abstractos. \"aiassistant\" = AiAssistant by "
+                        "InnovaMontreal (getaiassistant.app). \"taskdoctor\" = TaskDoctor.ai."
+                    ),
+                },
+                "proveedor_voz": {
+                    "type": "string",
+                    "enum": ["elevenlabs", "azure"],
+                    "description": (
+                        "Proveedor de voz. Omitir salvo pedido explícito del usuario — se "
+                        "completa solo con reels_defaults.PROVEEDOR_VOZ_POR_DEFECTO."
+                    ),
+                },
+                "voz_id": {
+                    "type": "string",
+                    "description": (
+                        "voice_id de ElevenLabs a usar (solo si proveedor_voz='elevenlabs'). "
+                        "Omitir salvo pedido explícito — se completa solo con "
+                        "reels_defaults.ELEVENLABS_VOZ_ID_POR_DEFECTO."
                     ),
                 },
             },

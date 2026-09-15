@@ -49,8 +49,9 @@ AiAssistant/
 │   │   ├── whatsapp_cloud_api.py # Cliente de la WhatsApp Cloud API (Meta, oficial)
 │   │   ├── messenger.py         # Meta Messenger Platform (oficial, solo Páginas)
 │   │   ├── macos_actions.py     # AppleScript / Shortcuts desde Python
-│   │   ├── reel_generator.py    # Voz neuronal fr-CA (Azure Speech) + fondos/íconos/mockups Pillow → .mp4 en data/reels/
-│   │   └── guiones_reels.py     # Guiones de reels ya aprobados (texto fr/en + tema) — evita retipear un guion validado
+│   │   ├── reel_generator.py    # Voz fr-CA (ElevenLabs o Azure Speech) + fondos/íconos/mockups Pillow → .mp4 en data/reels/
+│   │   ├── guiones_reels.py     # Guiones de reels ya aprobados (texto fr/en + tema) — evita retipear un guion validado
+│   │   └── reels_defaults.py    # Parámetros por defecto (voz, ritmo/pausa, URL/guion de cada producto) — tiene prioridad para productor_reels
 │   ├── assets/
 │   │   └── fonts/               # Work Sans (OFL) — tipografía usada para el subtítulo de los reels
 │   ├── memory/                 # Estilo de escritura + memoria vectorial
@@ -106,18 +107,23 @@ inicial: la estructura y los stubs están listos, pero cada integración
 necesita que completes credenciales siguiendo `MANUAL_CONEXION.md` antes de
 que funcione de punta a punta.
 
-El **productor_reels** ya se probó de punta a punta (voz neuronal Azure
-`fr-CA-Sylvie:DragonHDLatestNeural` — la voz "HD", validada contra las
-voces estándar por sonar notablemente menos robótica — animación Pillow,
-render moviepy → `.mp4` en `data/reels/`) y quedó validado: genera un video
+El **productor_reels** ya se probó de punta a punta — genera un video
 vertical (9:16) real, con narración en francés quebequense y subtítulo en
-inglés, sin romper el arranque del orchestrator si faltan las credenciales
-de Azure. Soporta dos "temas": `rive` (íconos abstractos, Rive
-Intelligente/TaskDoctor) y `aiassistant` (mockups reales del sitio
-AiAssistant by InnovaMontreal, getaiassistant.app — guion ya aprobado en
-`orchestrator/tools/guiones_reels.py`). Sigue el mismo patrón de "nunca
-romper el arranque si falta configuración" que el resto del orchestrator —
-las dependencias pesadas (Pillow, moviepy, Azure Speech SDK) se importan de
+inglés, sin romper el arranque del orchestrator si faltan credenciales.
+Dos proveedores de voz: **ElevenLabs** (una voz elegida a mano por el
+usuario en su Voice Library — el default hoy) con fallback a **Azure
+Speech** (`fr-CA-Sylvie:DragonHDLatestNeural`, la voz "HD" — validada
+contra las voces estándar por sonar notablemente menos robótica).
+Animación/mockups con Pillow, render con moviepy → `.mp4` en
+`data/reels/`. Soporta tres "temas": `rive` (íconos abstractos, Rive
+Intelligente), `aiassistant` (mockups reales de getaiassistant.app) y
+`taskdoctor` (mockups reales de taskdoctor.ai) — guiones ya aprobados en
+`orchestrator/tools/guiones_reels.py`, y todos los parámetros por defecto
+(voz, ritmo/pausa, URL de cada producto) centralizados en
+`orchestrator/tools/reels_defaults.py`, que tiene prioridad para el
+agente. Sigue el mismo patrón de "nunca romper el arranque si falta
+configuración" que el resto del orchestrator — las dependencias pesadas
+(Pillow, moviepy, Azure Speech SDK, httpx para ElevenLabs) se importan de
 forma perezosa, así que el resto del asistente funciona igual aunque no
 estén instaladas.
 

@@ -45,3 +45,35 @@ GUION_AIASSISTANT_LANZAMIENTO = [
         "visual": "mockup_form",
     },
 ]
+
+# --- TaskDoctor.ai -----------------------------------------------------------
+# Aprobado por el usuario el 2026-09-14. Contenido real verificado en vivo
+# en taskdoctor.ai (colores por getComputedStyle, copy y cifras tal cual el
+# sitio) — el 32%/12.4h/$620 por semana y las 4 fuentes de fricción son el
+# propio ejemplo que muestra el sitio, no inventados. Nada acá es concepto,
+# todo el contenido (incluida la cuadrícula de privacidad) ya es real y
+# público en el sitio.
+TEMA_TASKDOCTOR = "taskdoctor"
+
+GUION_TASKDOCTOR_LANZAMIENTO = [
+    {
+        "fr": "On trouve le travail répétitif dans votre navigateur, || sans jamais surveiller vos employés.",
+        "en": "Find browser work worth automating. Without monitoring employees.",
+        "visual": "mockup_td_hero",
+    },
+    {
+        "fr": "**32 %** d'opportunités d'automatisation || 12,4 heures retrouvées, 620 dollars par semaine.",
+        "en": "32% automation opportunities. 12.4 hours found.",
+        "visual": "mockup_td_dashboard",
+    },
+    {
+        "fr": "**Jamais de captures d'écran.** || Jamais de surveillance des employés.",
+        "en": "Built for business efficiency, not employee monitoring.",
+        "visual": "mockup_td_privacy",
+    },
+    {
+        "fr": "**Installez l'extension**, gratuitement || ça prend moins d'une minute.",
+        "en": "Install free. Works on Chrome.",
+        "visual": "mockup_td_cta",
+    },
+]

@@ -126,6 +126,54 @@ def _voz_azure(texto: str, destino_wav: Path) -> None:
         raise RuntimeError(f"Azure Speech no pudo sintetizar: {detalle.reason if detalle else resultado.reason}")
 
 
+ELEVENLABS_MODELO_POR_DEFECTO = "eleven_multilingual_v2"
+
+
+def _texto_para_elevenlabs(texto: str) -> str:
+    """Convierte los marcadores `||` y `**texto**` (pensados para el SSML
+    de Azure) a algo seguro para ElevenLabs: su API estándar no soporta
+    `<break>`/`<emphasis>` de forma confiable (eso lo leería literal), así
+    que `||` se convierte en una elipsis — pausa natural que cualquier TTS
+    reconoce — y `**texto**` se desenvuelve a texto plano."""
+    texto = re.sub(r"\*\*(.+?)\*\*", r"\1", texto)
+    return texto.replace("||", "…")
+
+
+def _voz_elevenlabs(texto: str, voice_id: str, destino_audio: Path) -> None:
+    """Sintetiza `texto` con una voz puntual de ElevenLabs (`voice_id`,
+    por ejemplo una elegida a mano en su Voice Library) y la escribe en
+    `destino_audio` (mp3).
+
+    Alternativa a Azure para probar una voz específica de ElevenLabs.
+    Requiere ELEVENLABS_API_KEY en .env. Si `voice_id` es una voz de la
+    Voice Library (no una tuya propia), ElevenLabs exige plan pago para
+    usarla por API — verificado en vivo: el plan Free devuelve 402
+    Payment Required aunque la misma voz funcione gratis en su web."""
+    import httpx
+
+    key = os.getenv("ELEVENLABS_API_KEY", "")
+    if not key:
+        raise RuntimeError(
+            "Falta ELEVENLABS_API_KEY en .env — necesaria para sintetizar "
+            "voz con ElevenLabs. Sacala en "
+            "elevenlabs.io/app/settings/api-keys (con permiso de "
+            "text-to-speech habilitado)."
+        )
+    modelo = os.getenv("ELEVENLABS_MODEL_ID", ELEVENLABS_MODELO_POR_DEFECTO)
+
+    resultado = httpx.post(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+        headers={"xi-api-key": key, "Content-Type": "application/json"},
+        json={"text": _texto_para_elevenlabs(texto), "model_id": modelo},
+        timeout=60,
+    )
+    if resultado.status_code != 200:
+        raise RuntimeError(
+            f"ElevenLabs no pudo sintetizar (HTTP {resultado.status_code}): {resultado.text[:300]}"
+        )
+    destino_audio.write_bytes(resultado.content)
+
+
 def _escapar_ssml(texto: str) -> str:
     return (
         texto.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -199,11 +247,24 @@ LIMA = (201, 243, 107)
 GRIS_BORDE = (225, 222, 212)
 GRIS_TEXTO = (117, 123, 117)
 
+# Paleta real de TaskDoctor.ai — sacada en vivo del sitio (getComputedStyle
+# + backgroundImage del botón), igual que se hizo con AiAssistant. No
+# inventar tonos nuevos acá tampoco.
+TD_CREMA = (255, 253, 250)
+TD_TINTA = (6, 18, 38)
+TD_NARANJA = (255, 103, 22)
+TD_NARANJA_DEEP = (242, 91, 12)
+TD_NARANJA_CLARO = (255, 178, 130)  # tinte más claro del mismo naranja, no un color nuevo
+TD_GRIS_BORDE = (232, 224, 214)
+TD_GRIS_TEXTO = (110, 108, 100)
+
 # Cada "tema" define el fondo animado y la identidad (avatar/handle) del
 # reel. "rive" = Rive Intelligente (marca original de este proyecto).
 # "aiassistant" = AiAssistant by InnovaMontreal (getaiassistant.app, sitio
-# real del usuario) — sin cuenta de Instagram confirmada todavía, el
-# handle de acá es un placeholder hasta que exista una real.
+# real del usuario). "taskdoctor" = TaskDoctor.ai (extensión de Chrome
+# gratuita, sitio real). Ninguno de los tres tiene cuenta de Instagram/FB
+# confirmada todavía — el handle de cada uno es un placeholder (el nombre
+# real del producto) hasta que exista una cuenta real.
 TEMAS = {
     "rive": {
         "fondo_a": NAVY, "fondo_b": TEAL_DEEP,
@@ -214,6 +275,11 @@ TEMAS = {
         "fondo_a": TINTA, "fondo_b": (16, 38, 89),
         "manchas": ((AZUL, 150), (LIMA, 90), (AZUL, 115), (LIMA, 70)),
         "glow": AZUL, "avatar_bg": AZUL, "iniciales": "AI", "handle": "AiAssistant",
+    },
+    "taskdoctor": {
+        "fondo_a": TD_TINTA, "fondo_b": (46, 20, 8),
+        "manchas": ((TD_NARANJA, 150), (TD_NARANJA_CLARO, 90), (TD_NARANJA_DEEP, 120), (TD_NARANJA_CLARO, 70)),
+        "glow": TD_NARANJA, "avatar_bg": TD_NARANJA, "iniciales": "TD", "handle": "taskdoctor.ai",
     },
 }
 
@@ -568,11 +634,201 @@ def _mockup_chat(overlay, draw, fase: float) -> None:
     draw.text(((cx0 + cx1) / 2, y1 - 50), "CONCEPT · COMING SOON", font=_cargar_fuente(22, 700), anchor="mm", fill=GRIS_TEXTO + (210,))
 
 
+def _mockup_td_hero(overlay, draw, fase: float) -> None:
+    """Portada real de TaskDoctor.ai — título, las 3 garantías de
+    privacidad y el CTA de instalación, tal cual el sitio."""
+    x0, y0, x1, y1 = _TARJETA
+    _dibujar_tarjeta(overlay, x0, y0, x1, y1)
+    cx0, cx1 = x0 + _PAD, x1 - _PAD
+    y = y0 + 70
+
+    f_h1 = _cargar_fuente(54, 800)
+    lineas_h1 = (
+        ("Find browser work", TD_TINTA, 0.00),
+        ("worth automating.", TD_TINTA, 0.08),
+        ("Without monitoring", TD_NARANJA, 0.20),
+        ("employees.", TD_NARANJA, 0.28),
+    )
+    for texto, color, inicio in lineas_h1:
+        a, dy = _revelar(fase, inicio, 0.2)
+        draw.text((cx0, y - dy), texto, font=f_h1, anchor="lm", fill=color + (a,))
+        y += 64
+    y += 30
+
+    f_body = _cargar_fuente(28, 500)
+    a, dy = _revelar(fase, 0.42, 0.2)
+    cuerpo = "Install the extension to spot repetitive work and choose what to automate first."
+    for i, linea in enumerate(_envolver_texto(draw, cuerpo, f_body, cx1 - cx0)):
+        draw.text((cx0, y + i * 40 - dy), linea, font=f_body, anchor="lm", fill=TD_GRIS_TEXTO + (a,))
+    y += 110
+
+    f_chip = _cargar_fuente(26, 600)
+    for i, texto in enumerate(("No screenshots", "No page text", "No employee monitoring")):
+        a, dy = _revelar(fase, 0.58 + i * 0.06, 0.16)
+        if a > 2:
+            yy = y - dy
+            draw.ellipse([cx0, yy, cx0 + 34, yy + 34], fill=TD_NARANJA + (a,))
+            draw.line([cx0 + 9, yy + 18, cx0 + 15, yy + 25, cx0 + 26, yy + 10], fill=(255, 255, 255, a), width=4, joint="curve")
+            draw.text((cx0 + 48, yy + 17), texto, font=f_chip, anchor="lm", fill=TD_TINTA + (a,))
+        y += 46
+
+    y += 30
+    f_btn = _cargar_fuente(30, 700)
+    p = _ease_out_back(_clamp01((fase - 0.85) / 0.15))
+    if p > 0.02:
+        texto = "Install Free Extension"
+        ancho = draw.textlength(texto, font=f_btn) + 80
+        alto = 88
+        escala = max(0.0, min(1.15, p))
+        aw, ah = ancho * escala, alto * escala
+        draw.rounded_rectangle([cx0, y, cx0 + aw, y + ah], radius=ah / 2, fill=TD_NARANJA + (255,))
+        if escala > 0.6:
+            draw.text((cx0 + aw / 2, y + ah / 2), texto, font=f_btn, anchor="mm", fill=(255, 255, 255, 255))
+
+
+def _mockup_td_dashboard(overlay, draw, fase: float) -> None:
+    """El panel real de 'esta semana' — 32% de oportunidades, 12.4 horas
+    encontradas, y las 4 fuentes principales, tal cual el sitio."""
+    x0, y0, x1, y1 = _TARJETA
+    _dibujar_tarjeta(overlay, x0, y0, x1, y1)
+    cx0, cx1 = x0 + _PAD, x1 - _PAD
+
+    a, dy = _revelar(fase, 0.0, 0.15)
+    draw.text((cx0, y0 + 60 - dy), "THIS WEEK", font=_cargar_fuente(24, 700), anchor="lm", fill=TD_NARANJA + (a,))
+    a, dy = _revelar(fase, 0.06, 0.18)
+    draw.text((cx0, y0 + 118 - dy), "Automation Opportunities", font=_cargar_fuente(38, 700), anchor="lm", fill=TD_TINTA + (a,))
+
+    a, dy = _revelar(fase, 0.15, 0.25)
+    draw.text((cx0, y0 + 220 - dy), "32%", font=_cargar_fuente(90, 800), anchor="lm", fill=TD_TINTA + (a,))
+    a, dy = _revelar(fase, 0.3, 0.2)
+    draw.text((cx0 + 230, y0 + 205 - dy), "12.4 hours found", font=_cargar_fuente(26, 600), anchor="lm", fill=TD_GRIS_TEXTO + (a,))
+    if a > 2:
+        chip_w = draw.textlength("$620/week est. savings", font=_cargar_fuente(22, 700)) + 36
+        draw.rounded_rectangle([cx0 + 230, y0 + 225 - dy, cx0 + 230 + chip_w, y0 + 265 - dy], radius=18, fill=TD_NARANJA_CLARO + (a,))
+        draw.text((cx0 + 248, y0 + 245 - dy), "$620/week est. savings", font=_cargar_fuente(22, 700), anchor="lm", fill=TD_NARANJA_DEEP + (a,))
+
+    y_lista = y0 + 330
+    a, dy = _revelar(fase, 0.42, 0.15)
+    draw.text((cx0, y_lista - dy), "TOP OPPORTUNITY SOURCES", font=_cargar_fuente(22, 700), anchor="lm", fill=TD_GRIS_TEXTO + (a,))
+    draw.line([(cx0, y_lista + 30), (cx1, y_lista + 30)], fill=TD_GRIS_BORDE + (255,), width=2)
+
+    filas = [
+        ("Tab Switching", 7.9, 0.52),
+        ("Tool Hopping", 4.6, 0.64),
+        ("Manual Copy/Paste", 3.1, 0.76),
+        ("Repetitive Work", 2.9, 0.88),
+    ]
+    fila_y = y_lista + 66
+    f_label = _cargar_fuente(28, 600)
+    f_valor = _cargar_fuente(26, 700)
+    for etiqueta, horas, inicio in filas:
+        a, dy = _revelar(fase, inicio, 0.14)
+        if a > 2:
+            yy = fila_y - dy
+            draw.text((cx0, yy), etiqueta, font=f_label, anchor="lm", fill=TD_TINTA + (a,))
+            draw.text((cx1, yy), f"{horas}h", font=f_valor, anchor="rm", fill=TD_NARANJA + (a,))
+            by = yy + 34
+            draw.rounded_rectangle([cx0, by, cx1, by + 12], radius=6, fill=TD_GRIS_BORDE + (a,))
+            avance = min(1.0, horas / 8.0)
+            draw.rounded_rectangle([cx0, by, cx0 + (cx1 - cx0) * avance, by + 12], radius=6, fill=TD_NARANJA + (a,))
+        fila_y += 92
+
+
+def _mockup_td_privacy(overlay, draw, fase: float) -> None:
+    """La cuadrícula real de garantías de privacidad — 'construido para
+    eficiencia, no para vigilar empleados'. Todo verificado en el sitio,
+    nada de esto es un concepto."""
+    x0, y0, x1, y1 = _TARJETA
+    _dibujar_tarjeta(overlay, x0, y0, x1, y1)
+    cx0, cx1 = x0 + _PAD, x1 - _PAD
+
+    f_h2 = _cargar_fuente(42, 800)
+    for i, (texto, inicio) in enumerate((
+        ("Built for business", 0.0), ("efficiency, not", 0.06), ("employee monitoring.", 0.12),
+    )):
+        a, dy = _revelar(fase, inicio, 0.2)
+        draw.text((cx0, y0 + 70 + i * 56 - dy), texto, font=f_h2, anchor="lm", fill=TD_TINTA + (a,))
+
+    items = ["No Screenshots", "No Page Content", "No Messages", "No Passwords", "No Personal Data", "No Employee Monitoring"]
+    col_w = (cx1 - cx0 - 30) / 2
+    f_item = _cargar_fuente(24, 600)
+    fila_y0 = y0 + 300
+    for i, texto in enumerate(items):
+        col, fila = i % 2, i // 2
+        a, dy = _revelar(fase, 0.32 + fila * 0.14 + col * 0.03, 0.16)
+        if a > 2:
+            cx = cx0 + col * (col_w + 30)
+            yy = fila_y0 + fila * 90 - dy
+            draw.ellipse([cx, yy, cx + 30, yy + 30], fill=TD_NARANJA + (a,))
+            draw.line([cx + 8, yy + 16, cx + 13, yy + 22, cx + 23, yy + 9], fill=(255, 255, 255, a), width=3, joint="curve")
+            for j, linea in enumerate(_envolver_texto(draw, texto, f_item, col_w - 44)):
+                draw.text((cx + 42, yy + 15 + j * 30), linea, font=f_item, anchor="lm", fill=TD_TINTA + (a,))
+
+    a, dy = _revelar(fase, 0.85, 0.15)
+    draw.text(((cx0 + cx1) / 2, y1 - 55 - dy), "Verified on taskdoctor.ai", font=_cargar_fuente(20, 600), anchor="mm", fill=TD_GRIS_TEXTO + (a,))
+
+
+def _mockup_td_cta(overlay, draw, fase: float) -> None:
+    """Cierre real — instalar la extensión gratis, funciona en Chrome."""
+    x0, y0, x1, y1 = _TARJETA
+    _dibujar_tarjeta(overlay, x0, y0, x1, y1)
+    cx0, cx1 = x0 + _PAD, x1 - _PAD
+    y = y0 + 90
+
+    f_h1 = _cargar_fuente(50, 800)
+    for i, (texto, inicio) in enumerate((("Install the", 0.0), ("extension free.", 0.1))):
+        a, dy = _revelar(fase, inicio, 0.2)
+        draw.text((cx0, y + i * 64 - dy), texto, font=f_h1, anchor="lm", fill=TD_TINTA + (a,))
+    y += 170
+
+    a, dy = _revelar(fase, 0.28, 0.2)
+    draw.text((cx0, y - dy), "Free to start. Under 1 minute to set up.", font=_cargar_fuente(28, 500), anchor="lm", fill=TD_GRIS_TEXTO + (a,))
+    y += 80
+
+    f_btn = _cargar_fuente(34, 700)
+    p = _ease_out_back(_clamp01((fase - 0.45) / 0.25))
+    if p > 0.02:
+        texto = "Install Free Extension"
+        ancho = draw.textlength(texto, font=f_btn) + 90
+        alto = 100
+        escala = max(0.0, min(1.15, p))
+        aw, ah = ancho * escala, alto * escala
+        cx = cx0 + aw / 2
+        draw.rounded_rectangle([cx0, y, cx0 + aw, y + ah], radius=ah / 2, fill=TD_NARANJA + (255,))
+        if escala > 0.6:
+            draw.text((cx0 + aw / 2, y + ah / 2), texto, font=f_btn, anchor="mm", fill=(255, 255, 255, 255))
+        # Anillos de "ping" — invita a tocar. OJO: ImageDraw sobre RGBA no
+        # mezcla, sobrescribe el pixel — dibujar un anillo semi-transparente
+        # directo sobre el botón ya opaco lo deja mal (termina fundiéndose
+        # con el fondo al componer, no con el botón). Se dibuja en un
+        # parche aparte y se pega con alpha_composite, como el glow.
+        from PIL import Image as _Image, ImageDraw as _ImageDraw
+
+        for n in range(2):
+            fase_ping = ((fase - 0.45) / 0.55 + n * 0.5) % 1.0
+            rr = 60 + fase_ping * 50
+            alpha = int(140 * (1 - fase_ping))
+            if alpha > 0 and fase > 0.45:
+                lado = int(rr * 2 + 20)
+                parche = _Image.new("RGBA", (lado, lado), (0, 0, 0, 0))
+                _ImageDraw.Draw(parche).ellipse([10, 10, lado - 10, lado - 10], outline=TD_NARANJA + (alpha,), width=4)
+                cy = y + ah / 2
+                overlay.alpha_composite(parche, (int(cx - lado / 2), int(cy - lado / 2)))
+    y += 140
+
+    a, dy = _revelar(fase, 0.75, 0.2)
+    draw.text((cx0, y - dy), "Works on Chrome. More browsers coming soon.", font=_cargar_fuente(24, 500), anchor="lm", fill=TD_GRIS_TEXTO + (a,))
+
+
 MOCKUP_VISUALES = {
     "mockup_hero": _mockup_hero,
     "mockup_roadmap": _mockup_roadmap,
     "mockup_form": _mockup_form,
     "mockup_chat": _mockup_chat,
+    "mockup_td_hero": _mockup_td_hero,
+    "mockup_td_dashboard": _mockup_td_dashboard,
+    "mockup_td_privacy": _mockup_td_privacy,
+    "mockup_td_cta": _mockup_td_cta,
 }
 
 
@@ -786,7 +1042,7 @@ def _componer_frame(beat: Beat, fase: float, indice: int, total: int, tema: str 
         # destellos (se vería recargado sobre una interfaz).
         centro = ((_TARJETA[0] + _TARJETA[2]) // 2, (_TARJETA[1] + _TARJETA[3]) // 2)
         intensidad = 0.35 + 0.1 * math.sin(fase * 2 * math.pi * 0.8)
-        _dibujar_glow(overlay, centro, AZUL, radio=int((_TARJETA[2] - _TARJETA[0]) * 0.6), intensidad=intensidad)
+        _dibujar_glow(overlay, centro, paleta["glow"], radio=int((_TARJETA[2] - _TARJETA[0]) * 0.6), intensidad=intensidad)
         MOCKUP_VISUALES[beat.visual](overlay, draw, fase)
     else:
         # Halo + destellos detrás del ícono, y el ícono encima — más
@@ -820,7 +1076,10 @@ def _componer_frame(beat: Beat, fase: float, indice: int, total: int, tema: str 
 
 # --- ensamblado final -------------------------------------------------------
 
-def _validar_beats(beats: list[dict], tema: str) -> str | None:
+PROVEEDORES_VOZ = {"azure", "elevenlabs"}
+
+
+def _validar_beats(beats: list[dict], tema: str, proveedor_voz: str = "azure", voz_id: str | None = None) -> str | None:
     if not beats:
         return "beats está vacío."
     for b in beats:
@@ -828,6 +1087,10 @@ def _validar_beats(beats: list[dict], tema: str) -> str | None:
             return f"visual {b.get('visual')!r} no existe. Opciones: {sorted(VISUALES)}."
     if tema not in TEMAS:
         return f"tema {tema!r} no existe. Opciones: {sorted(TEMAS)}."
+    if proveedor_voz not in PROVEEDORES_VOZ:
+        return f"proveedor_voz {proveedor_voz!r} no existe. Opciones: {sorted(PROVEEDORES_VOZ)}."
+    if proveedor_voz == "elevenlabs" and not voz_id:
+        return "proveedor_voz='elevenlabs' necesita voz_id (el voice_id de ElevenLabs)."
     if not FONT_PATH.exists():
         return f"Falta la fuente en {FONT_PATH}."
     return None
@@ -878,13 +1141,21 @@ def generar_preview_visual(beats: list[dict], nombre_salida: str, tema: str = "r
     }
 
 
-def generar_reel(beats: list[dict], nombre_salida: str, tema: str = "rive") -> dict:
+def generar_reel(
+    beats: list[dict],
+    nombre_salida: str,
+    tema: str = "rive",
+    proveedor_voz: str = "azure",
+    voz_id: str | None = None,
+) -> dict:
     """Genera el .mp4 completo en data/reels/{nombre_salida}.mp4.
 
     `beats`: lista de {"fr": str, "en": str, "visual": una clave de
     VISUALES}. El orden es el orden final del video. `tema`: "rive"
-    (Rive Intelligente, por defecto) o "aiassistant" (AiAssistant by
-    InnovaMontreal, getaiassistant.app).
+    (Rive Intelligente, por defecto), "aiassistant" (AiAssistant by
+    InnovaMontreal) o "taskdoctor" (TaskDoctor.ai). `proveedor_voz`:
+    "azure" (por defecto, ver VOZ_FR_CA_POR_DEFECTO) o "elevenlabs" (ver
+    _voz_elevenlabs — necesita `voz_id`, el voice_id de ElevenLabs).
 
     No es una tool irreversible — solo crea un archivo nuevo, no modifica
     ni borra nada existente."""
@@ -901,7 +1172,7 @@ def generar_reel(beats: list[dict], nombre_salida: str, tema: str = "rive") -> d
             ),
         }
 
-    error = _validar_beats(beats, tema)
+    error = _validar_beats(beats, tema, proveedor_voz, voz_id)
     if error:
         return {"status": "error", "detalle": error}
 
@@ -914,9 +1185,13 @@ def generar_reel(beats: list[dict], nombre_salida: str, tema: str = "rive") -> d
         try:
             for i, data in enumerate(beats):
                 beat = Beat(fr=data["fr"], en=data["en"], visual=data["visual"])
-                wav_path = tmp_path / f"beat_{i}.wav"
-                log.info("Sintetizando voz fr-CA para beat %d/%d: %r", i + 1, total, beat.fr)
-                _voz_azure(beat.fr, wav_path)
+                extension = "mp3" if proveedor_voz == "elevenlabs" else "wav"
+                wav_path = tmp_path / f"beat_{i}.{extension}"
+                log.info("Sintetizando voz fr-CA (%s) para beat %d/%d: %r", proveedor_voz, i + 1, total, beat.fr)
+                if proveedor_voz == "elevenlabs":
+                    _voz_elevenlabs(beat.fr, voz_id, wav_path)
+                else:
+                    _voz_azure(beat.fr, wav_path)
 
                 audio_clip = AudioFileClip(str(wav_path))
                 duracion = max(DURACION_MIN_BEAT_SEG, audio_clip.duration + COLCHON_TRAS_AUDIO_SEG)
