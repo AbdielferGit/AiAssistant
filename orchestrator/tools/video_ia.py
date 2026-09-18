@@ -54,6 +54,19 @@ ASPECT_RATIOS_VALIDOS = {"16:9", "9:16"}
 DURACIONES_VALIDAS = {"4", "6", "8"}
 TIMEOUT_POLLING_SEG = 360  # 6 min — el máximo documentado por Google en horas pico
 
+# Mapeo calidad -> modelo real. "lite"/"fast" son para VALIDAR barato un
+# prompt/composición nueva antes de pagar "standard" (la que da el mejor
+# resultado, y la que usamos por defecto para la versión final). Precios
+# verificados (720p, sin audio): lite ~$0.05/seg, fast ~$0.10/seg,
+# standard ~$0.20/seg — con audio nativo cuesta ~el doble, por eso
+# generate_audio=False por defecto (igual reemplazamos el audio con
+# ElevenLabs/Azure, pagar el audio nativo de Veo era plata tirada).
+MODELOS_POR_CALIDAD = {
+    "lite": "veo-3.1-lite-generate-preview",
+    "fast": "veo-3.1-fast-generate-preview",
+    "standard": MODELO_VEO_POR_DEFECTO,
+}
+
 
 def leer_url(url: str, max_caracteres: int = 6000) -> dict:
     """Descarga `url` y devuelve su texto visible (best-effort), para que
@@ -88,20 +101,56 @@ def leer_url(url: str, max_caracteres: int = 6000) -> dict:
     }
 
 
+def _cargar_imagen_local(ruta: str):
+    """Carga un archivo de imagen local (png/jpg) como types.Image, para
+    `imagen_inicial`/`imagenes_referencia` de generar_video_ia."""
+    from google.genai import types
+
+    ruta_path = Path(ruta)
+    ruta_abs = ruta_path if ruta_path.is_absolute() else REPO_ROOT / ruta_path
+    if not ruta_abs.exists():
+        raise RuntimeError(f"No existe la imagen: {ruta_abs}")
+    mime = "image/png" if ruta_abs.suffix.lower() == ".png" else "image/jpeg"
+    return types.Image(image_bytes=ruta_abs.read_bytes(), mime_type=mime)
+
+
 def generar_video_ia(
     prompt: str,
     nombre_salida: str,
     aspect_ratio: str = "9:16",
     duracion_seg: str = "8",
+    calidad: str = "standard",
+    generate_audio: bool = False,
+    imagen_inicial: str | None = None,
+    imagenes_referencia: list[str] | None = None,
+    negative_prompt: str | None = None,
+    seed: int | None = None,
 ) -> dict:
     """Genera un video real con Veo a partir de `prompt` (texto libre,
     en inglés — Veo entiende mejor inglés, ver system prompt del agente).
 
     OJO idioma/audio: este proyecto narra en francés quebequense aparte
     (ElevenLabs/Azure, ver reel_generator.py) — `prompt` NO debe pedir
-    diálogo hablado ni narración; Veo puede generar audio nativo si el
-    prompt lo sugiere, y eso chocaría con la narración que se agrega
-    después. Pedí solo imagen/movimiento/ambiente, sin diálogo.
+    diálogo hablado ni narración. `generate_audio=False` por defecto:
+    como igual reemplazamos/mezclamos el audio con ElevenLabs/Azure (ver
+    mezclar_audio), pagar el audio nativo de Veo no tiene sentido — y
+    cuesta ~el doble por segundo (verificado). Si alguna vez hace falta
+    el ambiente nativo de Veo, pasar generate_audio=True a propósito.
+
+    `calidad`: "lite" (~$0.05/seg, para VALIDAR barato un prompt/
+    composición nueva) | "fast" (~$0.10/seg) | "standard" (~$0.20/seg,
+    default — usar solo cuando el prompt ya está validado). Ir de lite a
+    standard cuando el resultado convence, no al revés.
+
+    `imagen_inicial`: ruta a una imagen local que fija el primer frame —
+    ancla la composición/sujeto exacto, deja solo el movimiento como
+    variable. `imagenes_referencia`: hasta 3 rutas de imágenes locales
+    para guiar el estilo visual (ver VideoGenerationReferenceImage).
+
+    `seed`/`negative_prompt`: existen en el SDK instalado aunque la doc
+    pública de Veo 3.1 no los documenta — probalos con cautela, su efecto
+    real no está confirmado (a diferencia del resto de esta función, que
+    sí está verificado en vivo).
 
     Llamada asíncrona del lado de Google — esta función espera
     (polling cada 10s) hasta que el video esté listo o hasta
@@ -120,19 +169,44 @@ def generar_video_ia(
         raise RuntimeError(f"aspect_ratio {aspect_ratio!r} inválido. Opciones: {sorted(ASPECT_RATIOS_VALIDOS)}.")
     if duracion_seg not in DURACIONES_VALIDAS:
         raise RuntimeError(f"duracion_seg {duracion_seg!r} inválida. Opciones: {sorted(DURACIONES_VALIDAS)}.")
+    if calidad not in MODELOS_POR_CALIDAD:
+        raise RuntimeError(f"calidad {calidad!r} inválida. Opciones: {sorted(MODELOS_POR_CALIDAD)}.")
+    if imagenes_referencia and len(imagenes_referencia) > 3:
+        raise RuntimeError(f"imagenes_referencia admite máximo 3, llegaron {len(imagenes_referencia)}.")
 
     from google import genai
     from google.genai import types
 
-    modelo = os.getenv("GEMINI_VEO_MODEL", MODELO_VEO_POR_DEFECTO)
+    modelo = os.getenv("GEMINI_VEO_MODEL") or MODELOS_POR_CALIDAD[calidad]
     client = genai.Client(api_key=key)
 
-    log.info("Pidiendo video a Veo (%s, %s, %ss): %r", modelo, aspect_ratio, duracion_seg, prompt)
-    operation = client.models.generate_videos(
-        model=modelo,
-        prompt=prompt,
-        config=types.GenerateVideosConfig(aspect_ratio=aspect_ratio, duration_seconds=duracion_seg),
+    config_kwargs = dict(
+        aspect_ratio=aspect_ratio,
+        duration_seconds=duracion_seg,
+        generate_audio=generate_audio,
     )
+    if negative_prompt:
+        config_kwargs["negative_prompt"] = negative_prompt
+    if seed is not None:
+        config_kwargs["seed"] = seed
+    if imagenes_referencia:
+        config_kwargs["reference_images"] = [
+            types.VideoGenerationReferenceImage(
+                image=_cargar_imagen_local(ruta),
+                reference_type=types.VideoGenerationReferenceType.STYLE,
+            )
+            for ruta in imagenes_referencia
+        ]
+
+    generate_kwargs = dict(model=modelo, prompt=prompt, config=types.GenerateVideosConfig(**config_kwargs))
+    if imagen_inicial:
+        generate_kwargs["image"] = _cargar_imagen_local(imagen_inicial)
+
+    log.info(
+        "Pidiendo video a Veo (%s, calidad=%s, %s, %ss, audio=%s): %r",
+        modelo, calidad, aspect_ratio, duracion_seg, generate_audio, prompt,
+    )
+    operation = client.models.generate_videos(**generate_kwargs)
 
     inicio = time.time()
     while not operation.done:
@@ -154,8 +228,10 @@ def generar_video_ia(
         "status": "generado",
         "ruta": str(salida.relative_to(REPO_ROOT)),
         "modelo": modelo,
+        "calidad": calidad,
         "aspect_ratio": aspect_ratio,
         "duracion_seg": duracion_seg,
+        "generate_audio": generate_audio,
     }
 
 

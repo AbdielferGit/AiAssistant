@@ -184,13 +184,25 @@ partir de una URL (no un mockup del sitio, sino metraje generado por IA):
    Shallow depth of field, 35mm lens. Warm, optimistic, photorealistic,
    professional mood. No dialogue."
 
-3. Llamá `generar_video_ia(prompt, nombre_salida, aspect_ratio="9:16",
-   duracion_seg="8")` con ese prompt. Avisale al usuario ANTES de llamarla
-   que puede tardar de uno a varios minutos (es asíncrono del lado de
-   Google) y que tiene costo real por segundo generado (a diferencia de
-   generar_reel, que es prácticamente gratis) — no hace falta pedir
-   confirmación aparte (no es irreversible, solo crea un archivo), pero
-   sí que sepa que no es gratis antes de generar.
+3. `generar_video_ia` tiene costo real por segundo generado (a diferencia
+   de generar_reel, prácticamente gratis) — NUNCA la llames sin que el
+   usuario haya dicho que sí explícitamente en ese mismo turno (un "dale",
+   "generalo", "sí" — una pregunta de seguimiento tipo "¿podemos...?" NO
+   cuenta como autorización, contestala primero). Mostrale el prompt y el
+   costo estimado, y esperá la confirmación.
+
+   Para subir la certeza del resultado sin gastar de más:
+   - Primero probá con `calidad="lite"` (~$0.05/seg, 4x-8x más barato) —
+     solo subí a `calidad="standard"` (el default, ~$0.20/seg) una vez
+     que el resultado en lite ya convenció. No saltes directo a standard
+     con un prompt nuevo sin probar.
+   - `generate_audio` queda en `False` por defecto en video_ia.py —
+     dejalo así salvo que el usuario pida explícitamente el ambiente
+     nativo de Veo en vez de mezclarlo con la narración.
+   - Si tenés una imagen que representa bien la composición exacta que
+     querés (una captura, un frame ya aprobado), pasala en
+     `imagen_inicial` — ancla el primer frame y deja solo el movimiento
+     como variable, mucho más predecible que texto puro.
 
 4. El resultado queda en data/reels/video_ia/{nombre_salida}.mp4 — igual
    que con generar_reel, nunca digas que ya está "publicado", solo que el
@@ -246,8 +258,14 @@ def _generar_video_ia(
     nombre_salida: str,
     aspect_ratio: str = "9:16",
     duracion_seg: str = "8",
+    calidad: str = "standard",
+    imagen_inicial: str | None = None,
+    imagenes_referencia: list[str] | None = None,
 ) -> dict:
-    return video_ia.generar_video_ia(prompt, nombre_salida, aspect_ratio=aspect_ratio, duracion_seg=duracion_seg)
+    return video_ia.generar_video_ia(
+        prompt, nombre_salida, aspect_ratio=aspect_ratio, duracion_seg=duracion_seg,
+        calidad=calidad, imagen_inicial=imagen_inicial, imagenes_referencia=imagenes_referencia,
+    )
 
 
 def _concatenar_clips(rutas: list[str], nombre_salida: str) -> dict:
@@ -391,6 +409,30 @@ TOOL_SCHEMAS = [
                     "type": "string",
                     "enum": ["4", "6", "8"],
                     "description": "Duración del clip en segundos.",
+                },
+                "calidad": {
+                    "type": "string",
+                    "enum": ["lite", "fast", "standard"],
+                    "description": (
+                        "Nivel de Veo. \"lite\" (~$0.05/seg) para VALIDAR barato un "
+                        "prompt/composición nueva antes de gastar en la versión final. "
+                        "\"standard\" (default, ~$0.20/seg) solo una vez que el prompt ya "
+                        "convenció en lite/fast — no saltar directo a standard con un "
+                        "prompt sin probar."
+                    ),
+                },
+                "imagen_inicial": {
+                    "type": "string",
+                    "description": (
+                        "Ruta a una imagen local que fija el primer frame — ancla la "
+                        "composición/sujeto exacto, deja solo el movimiento como "
+                        "variable. Opcional, sube la certeza del resultado."
+                    ),
+                },
+                "imagenes_referencia": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Hasta 3 rutas de imágenes locales para guiar el estilo visual.",
                 },
             },
             "required": ["prompt", "nombre_salida"],
