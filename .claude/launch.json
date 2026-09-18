@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-aiassistant",
+      "runtimeExecutable": ".venv/bin/uvicorn",
+      "runtimeArgs": ["orchestrator.web.app:app", "--reload", "--port", "8000"],
+      "port": 8000
+    }
+  ]
+}

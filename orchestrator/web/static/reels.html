@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>AiAssistant — Reels</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    margin: 0; background: #0f172a; color: #e2e8f0;
+    min-height: 100vh;
+  }
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .9rem 1.25rem; border-bottom: 1px solid #1e293b;
+  }
+  header h1 { font-size: 1rem; margin: 0; }
+  header nav { display: flex; gap: .6rem; align-items: center; }
+  header nav a { color: #94a3b8; font-size: .85rem; text-decoration: none; }
+  #logout {
+    background: none; border: 1px solid #334155; color: #94a3b8;
+    padding: .35rem .75rem; border-radius: 8px; cursor: pointer; font-size: .8rem;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+  label { display: block; font-size: .85rem; color: #94a3b8; margin: 1.1rem 0 .35rem; }
+  select, input[type=text], textarea {
+    width: 100%; background: #1e293b; border: 1px solid #334155; color: #e2e8f0;
+    padding: .6rem .8rem; border-radius: 8px; font-size: .9rem; font-family: inherit;
+  }
+  textarea { font-family: ui-monospace, monospace; font-size: .8rem; min-height: 220px; resize: vertical; }
+  .fila { display: flex; gap: .9rem; }
+  .fila > div { flex: 1; }
+  .nota { font-size: .78rem; color: #64748b; margin-top: .3rem; line-height: 1.4; }
+  .toggle { display: flex; align-items: center; gap: .5rem; margin-top: 1.1rem; font-size: .85rem; color: #94a3b8; }
+  button#generar {
+    margin-top: 1.5rem; width: 100%; background: #2563eb; color: white; border: none;
+    padding: .8rem 1rem; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: .95rem;
+  }
+  button#generar:disabled { opacity: .5; cursor: default; }
+  #resultado { margin-top: 1.5rem; padding: 1rem; border-radius: 10px; background: #1e293b; display: none; }
+  #resultado.error { border: 1px solid #dc2626; }
+  #resultado video { width: 100%; border-radius: 8px; margin-top: .6rem; }
+  #resultado .estado { font-size: .85rem; color: #94a3b8; }
+  #resultado a.descargar {
+    display: inline-block; margin-top: .7rem; color: #60a5fa; font-size: .85rem; text-decoration: none;
+  }
+  .spinner {
+    display: inline-block; width: 14px; height: 14px; border: 2px solid #334155;
+    border-top-color: #60a5fa; border-radius: 50%; animation: girar .7s linear infinite; vertical-align: -2px;
+  }
+  @keyframes girar { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 Generador de reels</h1>
+  <nav>
+    <a href="/">💬 Chat</a>
+    <button id="logout">Cerrar sesión</button>
+  </nav>
+</header>
+
+<main>
+  <div class="nota" id="nota-fuente"></div>
+
+  <label for="producto">Producto</label>
+  <select id="producto"></select>
+
+  <label for="nombre_salida">Nombre del archivo (sin extensión)</label>
+  <input type="text" id="nombre_salida" placeholder="ej. sitio_web_semana_01" autocomplete="off">
+
+  <div class="toggle">
+    <input type="checkbox" id="editar_guion">
+    <label for="editar_guion" style="margin:0">Editar el guion manualmente (si no, usa el ya aprobado)</label>
+  </div>
+  <div id="wrap_beats" style="display:none">
+    <label for="beats">Beats — lista JSON de {fr, en, visual}</label>
+    <textarea id="beats" spellcheck="false"></textarea>
+  </div>
+
+  <div class="fila">
+    <div>
+      <label for="proveedor_voz">Proveedor de voz</label>
+      <select id="proveedor_voz">
+        <option value="">Por defecto (reels_defaults.py)</option>
+        <option value="elevenlabs">ElevenLabs</option>
+        <option value="azure">Azure</option>
+      </select>
+    </div>
+    <div>
+      <label for="voz_id">voice_id de ElevenLabs (opcional)</label>
+      <input type="text" id="voz_id" placeholder="dejar vacío = default" autocomplete="off">
+    </div>
+  </div>
+
+  <button id="generar">Generar reel</button>
+
+  <div id="resultado"></div>
+</main>
+
+<script>
+let productos = {};
+
+async function cargarProductos() {
+  const res = await fetch('/api/reels/productos');
+  if (res.status === 401) { window.location.href = '/'; return; }
+  productos = await res.json();
+  const sel = document.getElementById('producto');
+  sel.innerHTML = '';
+  for (const nombre of Object.keys(productos)) {
+    const opt = document.createElement('option');
+    opt.value = nombre;
+    opt.textContent = nombre;
+    sel.appendChild(opt);
+  }
+  actualizarNota();
+}
+
+function actualizarNota() {
+  const nombre = document.getElementById('producto').value;
+  const datos = productos[nombre];
+  const nota = document.getElementById('nota-fuente');
+  if (!datos) { nota.textContent = ''; return; }
+  const partes = [];
+  if (datos.url_fuente) partes.push('Fuente real: ' + datos.url_fuente);
+  partes.push(datos.tiene_guion ? 'Ya tiene guion aprobado (' + datos.beats.length + ' beats).' : 'Todavía no tiene guion aprobado — activá "editar el guion" y pegá uno.');
+  nota.textContent = partes.join(' · ');
+  if (document.getElementById('editar_guion').checked) precargarBeats();
+}
+
+function precargarBeats() {
+  const datos = productos[document.getElementById('producto').value];
+  const actual = (datos && datos.beats) || [
+    { fr: '', en: '', visual: '' },
+  ];
+  document.getElementById('beats').value = JSON.stringify(actual, null, 2);
+}
+
+document.getElementById('producto').addEventListener('change', actualizarNota);
+document.getElementById('editar_guion').addEventListener('change', (e) => {
+  document.getElementById('wrap_beats').style.display = e.target.checked ? 'block' : 'none';
+  if (e.target.checked) precargarBeats();
+});
+
+function mostrarResultado(html, esError) {
+  const div = document.getElementById('resultado');
+  div.style.display = 'block';
+  div.className = esError ? 'error' : '';
+  div.innerHTML = html;
+}
+
+async function pollEstado(jobId) {
+  const res = await fetch('/api/reels/estado/' + jobId);
+  if (res.status === 401) { window.location.href = '/'; return; }
+  const data = await res.json();
+
+  if (data.status === 'en_progreso') {
+    mostrarResultado('<span class="spinner"></span> <span class="estado">Generando — puede tardar uno o dos minutos (síntesis de voz + render)...</span>', false);
+    setTimeout(() => pollEstado(jobId), 3000);
+    return;
+  }
+
+  if (data.status === 'error') {
+    mostrarResultado('<strong>Error:</strong> ' + (data.detalle || 'desconocido'), true);
+    document.getElementById('generar').disabled = false;
+    return;
+  }
+
+  // listo
+  const r = data.resultado;
+  let html = '<div class="estado">Listo — ' + r.duracion_seg + 's, ' + r.beats + ' beats.</div>';
+  html += '<video controls src="/api/reels/video/' + jobId + '"></video>';
+  html += '<div><a class="descargar" href="/api/reels/video/' + jobId + '" download>⬇ Descargar .mp4</a></div>';
+  if (r.drive) {
+    if (r.drive.status === 'error') {
+      html += '<div class="nota">No se pudo subir a Drive: ' + r.drive.detalle + '</div>';
+    } else {
+      html += '<div class="nota">Subido a Google Drive.</div>';
+    }
+  }
+  mostrarResultado(html, false);
+  document.getElementById('generar').disabled = false;
+}
+
+document.getElementById('generar').addEventListener('click', async () => {
+  const nombreSalida = document.getElementById('nombre_salida').value.trim();
+  if (!nombreSalida) { alert('Ponele un nombre al archivo.'); return; }
+
+  const payload = {
+    producto: document.getElementById('producto').value,
+    nombre_salida: nombreSalida,
+    proveedor_voz: document.getElementById('proveedor_voz').value || null,
+    voz_id: document.getElementById('voz_id').value.trim() || null,
+  };
+
+  if (document.getElementById('editar_guion').checked) {
+    try {
+      payload.beats = JSON.parse(document.getElementById('beats').value);
+    } catch (e) {
+      alert('El JSON de los beats no es válido: ' + e.message);
+      return;
+    }
+  }
+
+  document.getElementById('generar').disabled = true;
+  mostrarResultado('<span class="spinner"></span> <span class="estado">Enviando...</span>', false);
+
+  try {
+    const res = await fetch('/api/reels/generar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.status === 401) { window.location.href = '/'; return; }
+    if (!res.ok) {
+      const detalle = (await res.json().catch(() => ({}))).detail || ('HTTP ' + res.status);
+      mostrarResultado('<strong>Error:</strong> ' + detalle, true);
+      document.getElementById('generar').disabled = false;
+      return;
+    }
+    const { job_id } = await res.json();
+    pollEstado(job_id);
+  } catch (err) {
+    mostrarResultado('No se pudo conectar con el servidor (' + (err.message || 'sin conexión') + ').', true);
+    document.getElementById('generar').disabled = false;
+  }
+});
+
+document.getElementById('logout').addEventListener('click', async () => {
+  await fetch('/auth/logout', { method: 'POST' });
+  window.location.href = '/';
+});
+
+cargarProductos();
+</script>
+</body>
+</html>

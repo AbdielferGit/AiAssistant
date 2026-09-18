@@ -1,0 +1,66 @@
+# Blueprint de Render para el servicio "asistente web" (chat con los 4
+# agentes + /reels). El recepcionista (orchestrator/webhooks/whatsapp_cloud.py)
+# ya vive como servicio aparte en la misma cuenta de Render — este es el
+# SEGUNDO, independiente, mismo repo/rama, distinto comando de arranque.
+#
+# Cómo usarlo: en el dashboard de Render → New → Blueprint → elegí este
+# repo. Render lee este archivo y arma el servicio solo, pero cada
+# variable de abajo (sync: false) hay que pegarla a mano la primera vez
+# — son todas secretos o datos que solo tenés vos, ningún valor real vive
+# en este archivo ni en el repo.
+#
+# `plan: free` para probar sin costo (se duerme a los 15 min sin tráfico,
+# ~1 min para despertar). Para que quede siempre despierto, cambiá a
+# `starter` ($7/mes) antes de compartir la URL en serio.
+services:
+  - name: aiassistant-web
+    type: web
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn orchestrator.web.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # --- Obligatoria para que el proceso arranque ---
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+      # --- Login web (Google Sign-In) — sin esto nadie puede entrar ---
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false  # ojo: tiene que apuntar a la URL real de Render, no a localhost
+      - key: WEB_SESSION_SECRET
+        sync: false  # el mismo valor que ya tenés en tu .env local, o uno nuevo
+      - key: INVITED_USERS_YAML
+        sync: false  # contenido completo de config/invited_users.yaml (cat ese archivo, pegá el resultado)
+
+      # --- Gmail/Calendar/Drive (asistente + subida de reels a Drive) ---
+      - key: GOOGLE_TOKEN_JSON
+        sync: false  # contenido completo de token.json (ver scripts/reautorizar_google.py)
+      - key: GOOGLE_DRIVE_REELS_FOLDER_ID
+        sync: false
+      - key: GOOGLE_DRIVE_DB_FOLDER_ID
+        sync: false
+
+      # --- Voz de los reels ---
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: AZURE_SPEECH_KEY
+        sync: false
+      - key: AZURE_SPEECH_REGION
+        sync: false
+      - key: AZURE_SPEECH_VOICE_FR_CA
+        sync: false
+
+      # --- Solo si además vas a usar el agente "asistente" para WhatsApp/
+      # Messenger real desde este mismo servicio (opcional) ---
+      - key: CONTACTS_YAML
+        sync: false
+      - key: WHATSAPP_CLOUD_API_TOKEN
+        sync: false
+      - key: WHATSAPP_CLOUD_API_PHONE_NUMBER_ID
+        sync: false
+      - key: MESSENGER_PAGE_ACCESS_TOKEN
+        sync: false

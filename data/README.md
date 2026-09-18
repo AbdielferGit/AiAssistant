@@ -4,6 +4,14 @@ Aquí vive la base de datos local: el índice vectorial de estilo (LanceDB,
 carpeta `vector_store/`) y cualquier SQLite auxiliar. **No se sube a git**
 (ver `.gitignore`) porque contiene tus mensajes reales.
 
+## reels/
+
+Los `.mp4` que genera el agente "productor_reels" (`orchestrator/agents/reel_producer.py`)
+caen en `data/reels/`. Tampoco se suben a git (mismo `data/*` del
+`.gitignore`) — son archivos de salida regenerables, no algo que haya que
+versionar. Subirlos a Instagram/Facebook lo sigue haciendo el usuario a
+mano, igual que los borradores de correo del proyecto de prospección.
+
 ## Respaldo a Google Drive
 
 `scripts/sync_to_drive.py` sube el contenido de esta carpeta a la carpeta
