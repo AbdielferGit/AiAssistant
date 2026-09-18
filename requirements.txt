@@ -24,3 +24,11 @@ Pillow>=10.4.0
 moviepy>=2.0.0
 imageio-ffmpeg>=0.5.1
 azure-cognitiveservices-speech>=1.40.0
+
+# --- Video real con IA (orchestrator/tools/video_ia.py, agente "productor_reels") ---
+# Veo (Google) vía la API oficial de Gemini — google-genai es el SDK
+# nuevo, NO confundir con el paquete viejo "google-generativeai".
+# beautifulsoup4 extrae texto legible de una URL para fundamentar el
+# prompt en contenido real.
+google-genai>=0.3.0
+beautifulsoup4>=4.12.0

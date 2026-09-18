@@ -1216,3 +1216,49 @@ def generar_reel(
         "duracion_seg": round(reel.duration, 1),
         "beats": total,
     }
+
+
+def concatenar_clips(rutas: list[str], nombre_salida: str) -> dict:
+    """Concatena varios .mp4 YA GENERADOS (de cualquier origen — un video
+    real de Veo vía video_ia.generar_video_ia, un reel de mockups vía
+    generar_reel, lo que sea) en un solo video final, en el orden dado.
+
+    Cada clip conserva su propio audio tal cual (ambiente nativo de Veo,
+    narración fr-CA de un mockup, o silencio) — esta función NO mezcla
+    pistas de audio ni agrega narración nueva, solo pega los clips en
+    secuencia. Todos se reescalan a ANCHO x ALTO (1080x1920) para que el
+    resultado sea consistente aunque los clips de origen tengan
+    resoluciones distintas (ej. Veo entrega 720x1280, los mockups
+    1080x1920 — misma proporción 9:16, se reescala sin franjas negras).
+
+    No es una tool irreversible — solo crea un archivo nuevo."""
+    try:
+        from moviepy import VideoFileClip, concatenate_videoclips
+    except ImportError as exc:
+        return {"status": "error", "detalle": f"Falta una dependencia ({exc}). Corre `pip install -r requirements.txt`."}
+
+    if not rutas:
+        return {"status": "error", "detalle": "rutas está vacío."}
+
+    clips = []
+    for ruta in rutas:
+        ruta_path = Path(ruta)
+        ruta_abs = ruta_path if ruta_path.is_absolute() else REPO_ROOT / ruta_path
+        if not ruta_abs.exists():
+            return {"status": "error", "detalle": f"No existe el archivo: {ruta_abs}"}
+        clip = VideoFileClip(str(ruta_abs))
+        if clip.size != [ANCHO, ALTO]:
+            clip = clip.resized(new_size=(ANCHO, ALTO))
+        clips.append(clip)
+
+    SALIDA_DIR.mkdir(parents=True, exist_ok=True)
+    salida = SALIDA_DIR / f"{nombre_salida}.mp4"
+    final = concatenate_videoclips(clips, method="compose")
+    final.write_videofile(str(salida), fps=FPS, codec="libx264", audio_codec="aac", logger=None)
+
+    return {
+        "status": "generado",
+        "ruta": str(salida.relative_to(REPO_ROOT)),
+        "duracion_seg": round(final.duration, 1),
+        "clips": len(rutas),
+    }

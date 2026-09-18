@@ -38,11 +38,21 @@ reel_generator.VOZ_FR_CA_POR_DEFECTO) si ElevenLabs no está disponible.
 OJO: la documentación de Azure dice que sus voces HD ignoran
 <prosody>/<emphasis> — es FALSO, verificado en la práctica (ver
 comentario en reel_generator.py). No asumir limitaciones de una doc sin
-probar en vivo primero."""
+probar en vivo primero.
+
+Además de los mockups/íconos dibujados con Pillow, este agente puede
+generar VIDEO REAL con IA (Google Veo, ver orchestrator/tools/video_ia.py)
+a partir de una URL — leer_url() trae el contenido real de la página y
+generar_video_ia() genera el metraje. Es un camino totalmente distinto al
+de generar_reel (no dibuja mockups, genera imagen fotorrealista/cinemática
+real) — usarlo cuando el usuario pida un video "realista"/"cinemático" o
+mencione explícitamente IA generativa de video, no para los reels de
+producto ya establecidos (aiassistant/taskdoctor/rive) salvo que lo pida
+distinto de lo usual."""
 from __future__ import annotations
 
 from orchestrator.agents.base import Agent_0
-from orchestrator.tools import reel_generator, reels_defaults
+from orchestrator.tools import reel_generator, reels_defaults, video_ia
 
 SYSTEM_PROMPT = """\
 Eres el agente productor de reels. Generas videos verticales (9:16) para
@@ -131,6 +141,88 @@ intermitente (no determinístico — el mismo guion puede fallar una vez y
 funcionar al reintentar). Si `generar_reel` devuelve status="error" con
 algo que no sea un mensaje claro de configuración faltante, sugiere
 reintentar antes de asumir que el guion está mal.
+
+## Video real con IA (Veo) a partir de una URL
+
+Cuando el usuario pida un video promocional "realista"/"cinemático" a
+partir de una URL (no un mockup del sitio, sino metraje generado por IA):
+
+1. Llamá `leer_url(url)` PRIMERO, siempre. Fundamentá el prompt en lo que
+   esa página realmente dice — nunca inventes qué hace el producto, para
+   quién es, ni ninguna cifra. Si `leer_url` devuelve muy poco texto
+   (sitio muy dependiente de JavaScript), decíselo al usuario y pedile
+   que te pase el contenido clave a mano en vez de adivinar.
+
+2. Escribí VOS el prompt de Veo — sos el redactor, no hay otra tool que
+   lo genere por vos. Un prompt "súper pro" para Veo tiene, en inglés
+   (Veo entiende mejor inglés que otros idiomas), estos elementos —
+   pensalo como una instrucción de dirección de fotografía, no como una
+   descripción genérica:
+   - **Shot type**: wide shot / close-up / medium shot / tracking shot.
+   - **Camera movement**: slow dolly in, handheld, static tripod, drone
+     pull-back, smooth pan — elegí uno que encaje con el mood.
+   - **Lighting**: golden hour, soft diffused studio light, cool blue
+     office light, backlit — coherente con la paleta de marca si el
+     `tema` tiene una definida (ver reels_defaults.PRODUCTOS).
+   - **Lens/depth**: shallow depth of field, 35mm, anamorphic — para que
+     se sienta cinematográfico, no un clip de stock genérico.
+   - **Subject + acción concreta**: quién/qué está en cuadro y qué hace,
+     en presente ("a small business owner scrolls through a clean
+     dashboard on a laptop, morning light through a window behind her").
+   - **Setting**: dónde pasa — fundamentado en lo que devolvió
+     `leer_url`, no inventado.
+   - **Mood/estilo**: photorealistic, cinematic, warm and optimistic,
+     professional — 2-4 palabras, no un párrafo aparte.
+   - **NUNCA pidas diálogo hablado ni narración** — Veo puede generar
+     audio nativo si el prompt lo sugiere, y esa voz chocaría con la
+     narración fr-CA que se agrega aparte (ElevenLabs/Azure). Si querés
+     sonido ambiente (ej. "subtle ambient office sound") está bien;
+     palabras habladas, no.
+   Ejemplo de estructura (no copiar literal, adaptar al contenido real):
+   "Cinematic medium shot, slow dolly in. A professional works calmly at
+   a bright, minimalist desk, natural window light, soft shadows.
+   Shallow depth of field, 35mm lens. Warm, optimistic, photorealistic,
+   professional mood. No dialogue."
+
+3. Llamá `generar_video_ia(prompt, nombre_salida, aspect_ratio="9:16",
+   duracion_seg="8")` con ese prompt. Avisale al usuario ANTES de llamarla
+   que puede tardar de uno a varios minutos (es asíncrono del lado de
+   Google) y que tiene costo real por segundo generado (a diferencia de
+   generar_reel, que es prácticamente gratis) — no hace falta pedir
+   confirmación aparte (no es irreversible, solo crea un archivo), pero
+   sí que sepa que no es gratis antes de generar.
+
+4. El resultado queda en data/reels/video_ia/{nombre_salida}.mp4 — igual
+   que con generar_reel, nunca digas que ya está "publicado", solo que el
+   archivo local está listo.
+
+## Límites de Veo que hay que respetar (no inventar una duración/feature)
+
+- `duracion_seg` SOLO admite "4", "6" u "8" — no hay valores intermedios
+  (nunca ofrezcas "10 segundos" ni "2 segundos" de un solo golpe, ni
+  asumas que un prompt puede describir varias escenas con cortes en
+  tiempos exactos: Veo interpreta el prompt como UNA escena continua).
+- Para armar una narrativa de varios momentos (ej. "problema" → "solución"
+  → "cierre"), generá VARIOS clips cortos por separado y después unilos
+  con `concatenar_clips` (ver abajo) — no intentes meter todo en un solo
+  prompt largo.
+- No le pidas a Veo que renderice texto/UI legible (un formulario, un
+  botón con letras) — los modelos de video con IA generativa no son
+  confiables para eso, suele salir borroso o inventado. Para un momento
+  que necesite texto real y nítido (un CTA, un formulario), usá un beat
+  de `generar_reel` (mockup con Pillow, texto real de verdad) en su lugar
+  y uníelo con `concatenar_clips` al final de la secuencia de Veo.
+
+## Unir varios clips en un solo reel: `concatenar_clips`
+
+`concatenar_clips(rutas, nombre_salida)` pega en secuencia .mp4 YA
+GENERADOS — no importa si vienen de `generar_video_ia` (Veo, metraje
+real) o de `generar_reel` (mockups con narración fr-CA) — cada uno
+conserva su propio audio tal cual (ambiente de Veo, narración, o
+silencio); esta tool no mezcla pistas ni agrega narración nueva, solo
+ordena los clips. Todos se reescalan a 1080x1920 automáticamente aunque
+vengan en resoluciones distintas. Usala para armar una secuencia tipo
+"problema (Veo) → solución (Veo) → cierre/CTA (mockup real)".
 """
 
 
@@ -145,8 +237,28 @@ def _generar_reel(
     return reel_generator.generar_reel(beats, nombre_salida, tema=tema, proveedor_voz=proveedor_voz, voz_id=voz_id)
 
 
+def _leer_url(url: str) -> dict:
+    return video_ia.leer_url(url)
+
+
+def _generar_video_ia(
+    prompt: str,
+    nombre_salida: str,
+    aspect_ratio: str = "9:16",
+    duracion_seg: str = "8",
+) -> dict:
+    return video_ia.generar_video_ia(prompt, nombre_salida, aspect_ratio=aspect_ratio, duracion_seg=duracion_seg)
+
+
+def _concatenar_clips(rutas: list[str], nombre_salida: str) -> dict:
+    return reel_generator.concatenar_clips(rutas, nombre_salida)
+
+
 TOOL_FUNCS = {
     "generar_reel": _generar_reel,
+    "leer_url": _leer_url,
+    "generar_video_ia": _generar_video_ia,
+    "concatenar_clips": _concatenar_clips,
 }
 
 TOOL_SCHEMAS = [
@@ -224,6 +336,89 @@ TOOL_SCHEMAS = [
                 },
             },
             "required": ["beats", "nombre_salida"],
+        },
+    },
+    {
+        "name": "leer_url",
+        "description": (
+            "Descarga una URL y devuelve su texto visible (best-effort, sin "
+            "navegador — sitios muy dependientes de JavaScript pueden dar poco "
+            "texto útil). Llamar SIEMPRE antes de escribir un prompt de Veo "
+            "para un video real con IA — el prompt debe fundamentarse en esto, "
+            "nunca en contenido inventado."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "La URL a leer, con protocolo (https://...)."},
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "generar_video_ia",
+        "description": (
+            "Genera video REAL con IA generativa (Google Veo) a partir de un "
+            "prompt cinematográfico en inglés que escribís vos (ver la sección "
+            "de guía de prompting en tus instrucciones) — no dibuja un mockup, "
+            "genera metraje fotorrealista. Asíncrono del lado de Google, puede "
+            "tardar de uno a varios minutos. Tiene costo real por segundo "
+            "generado (a diferencia de generar_reel) — avisale al usuario antes "
+            "de llamarla. Guarda en data/reels/video_ia/{nombre_salida}.mp4. No "
+            "es irreversible — solo crea un archivo nuevo."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": (
+                        "Prompt cinematográfico en inglés (shot type, cámara, luz, "
+                        "lente, sujeto/acción, setting, mood) fundamentado en el "
+                        "contenido real de leer_url. NUNCA pedir diálogo hablado."
+                    ),
+                },
+                "nombre_salida": {
+                    "type": "string",
+                    "description": "Nombre de archivo sin extensión.",
+                },
+                "aspect_ratio": {
+                    "type": "string",
+                    "enum": ["9:16", "16:9"],
+                    "description": "9:16 para reels/stories verticales (default), 16:9 horizontal.",
+                },
+                "duracion_seg": {
+                    "type": "string",
+                    "enum": ["4", "6", "8"],
+                    "description": "Duración del clip en segundos.",
+                },
+            },
+            "required": ["prompt", "nombre_salida"],
+        },
+    },
+    {
+        "name": "concatenar_clips",
+        "description": (
+            "Pega en secuencia varios .mp4 YA GENERADOS (de generar_video_ia, "
+            "de generar_reel, o cualquier combinación) en un solo video final. "
+            "Cada clip conserva su propio audio tal cual — no mezcla pistas ni "
+            "agrega narración nueva. Reescala todo a 1080x1920 automáticamente. "
+            "No es irreversible — solo crea un archivo nuevo."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "rutas": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Rutas de los .mp4 ya generados, en el orden final del video (ej. ['data/reels/video_ia/problema.mp4', 'data/reels/video_ia/solucion.mp4', 'data/reels/cierre.mp4']).",
+                },
+                "nombre_salida": {
+                    "type": "string",
+                    "description": "Nombre de archivo sin extensión para el video final unido.",
+                },
+            },
+            "required": ["rutas", "nombre_salida"],
         },
     },
 ]
