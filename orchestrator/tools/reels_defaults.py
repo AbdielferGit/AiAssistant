@@ -45,20 +45,17 @@ AZURE_PAUSA_MS = 120
 # Un reel siempre es de uno de estos. `guion` es la lista de beats ya
 # aprobada por el usuario (ver guiones_reels.py) — None si todavía no hay
 # una para ese producto.
+#
+# OJO arquitectura del negocio (aclarado por el usuario 2026-09-19):
+# AiAssistant (este repo) es la HERRAMIENTA — el sistema de agentes que
+# crea todo esto, no un producto que se le venda a nadie. Rive Intelligente
+# es el ecosistema/marca real de cara al cliente, y TaskDoctor es uno de
+# los servicios dentro de ese ecosistema. Por eso "aiassistant" (el
+# producto getaiassistant.app) salió de esta lista — ya no se comercializa
+# aparte. El código de sus mockups (mockup_hero/mockup_roadmap/mockup_chat/
+# mockup_form) sigue en reel_generator.py sin usarse, por si hace falta
+# reactivarlo — no se borró, solo se sacó de la config activa.
 PRODUCTOS: dict[str, dict] = {
-    "aiassistant": {
-        "tema": "aiassistant",
-        "url_fuente": "https://getaiassistant.app/en/",
-        "guion": guiones_reels.GUION_AIASSISTANT_LANZAMIENTO,
-        "nota": (
-            "Contenido verificado en vivo contra el sitio real (versión FR y "
-            "EN, el mismo día). El beat visual='mockup_chat' es un CONCEPTO — "
-            "getaiassistant.app todavía no tiene chat en vivo (verificado: "
-            "sin widget, sin enlaces a redes). El mockup ya lo marca en "
-            "pantalla como 'CONCEPT · COMING SOON', no sacar esa etiqueta sin "
-            "confirmar con el usuario que el chat ya es real."
-        ),
-    },
     "taskdoctor": {
         "tema": "taskdoctor",
         "url_fuente": "https://taskdoctor.ai/",
@@ -66,18 +63,23 @@ PRODUCTOS: dict[str, dict] = {
         "nota": (
             "Contenido y cifras (32%, 12.4h, $620/semana, las 4 fuentes de "
             "fricción, la cuadrícula de privacidad) son el propio ejemplo y "
-            "copy que muestra el sitio real — nada es concepto ni inventado, "
-            "a diferencia del chat de AiAssistant."
+            "copy que muestra el sitio real — nada es concepto ni inventado. "
+            "Servicio dentro del ecosistema Rive Intelligente."
         ),
     },
     "rive": {
         "tema": "rive",
-        "url_fuente": None,  # Rive Intelligente no tiene sitio propio todavía
+        "url_fuente": "https://riveintelligente.ca/",
         "guion": None,
         "nota": (
-            "Marca original del proyecto (BecameGrowthPartner/Prospection) — "
-            "usa los íconos abstractos (ICON_VISUALES en reel_generator.py), "
-            "no mockups de un sitio real. Sin guion aprobado todavía."
+            "Marca/ecosistema real de cara al cliente — riveintelligente.ca "
+            "SÍ existe y está en producción (Next.js, repo aparte "
+            "github.com/AbdielferGit/RiveIntelligente, deploy en Bluehost — "
+            "verificado en vivo 2026-09-19, corrige una nota vieja de este "
+            "archivo que decía que no tenía sitio propio). Los reels de tema "
+            "'rive' hoy usan los íconos abstractos (ICON_VISUALES en "
+            "reel_generator.py), no mockups del sitio real — sin guion "
+            "aprobado todavía ni mockups del sitio real construidos."
         ),
     },
 }

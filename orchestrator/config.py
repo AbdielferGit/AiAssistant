@@ -37,6 +37,8 @@ class Settings:
     vector_db_path: str
     inbound_tracker_path: str
     web_session_secret: str
+    meta_pixel_id: str
+    meta_capi_access_token: str
 
     @classmethod
     def load(cls) -> "Settings":
@@ -67,6 +69,12 @@ class Settings:
             vector_db_path=os.getenv("VECTOR_DB_PATH", "./data/vector_store"),
             inbound_tracker_path=os.getenv("INBOUND_TRACKER_PATH", "./data/whatsapp_last_inbound.json"),
             web_session_secret=web_session_secret,
+            # Waitlist/leads propia (orchestrator/tools/leads.py) — ambas
+            # opcionales. Sin ellas, los leads igual se guardan local, solo
+            # no se manda nada a la Conversions API de Meta. Sacar en
+            # business.facebook.com -> Events Manager -> tu pixel.
+            meta_pixel_id=os.getenv("META_PIXEL_ID", ""),
+            meta_capi_access_token=os.getenv("META_CAPI_ACCESS_TOKEN", ""),
         )
 
 

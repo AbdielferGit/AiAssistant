@@ -36,7 +36,11 @@ Tools, pensadas para que el AGENTE (no este archivo) escriba el prompt
   reel_generator.py — el francés NUNCA se dibuja, esto es SOLO inglés.
 - `producir_beat_veo(...)`: orquesta un beat completo de Veo — sintetiza
   la narración fr-CA, la mezcla con el ambiente del clip, y quema el
-  subtítulo en inglés, todo en un solo llamado."""
+  subtítulo en inglés, todo en un solo llamado.
+- `generar_imagen_ia(prompt, nombre_salida, ...)`: genera una imagen fija
+  (Gemini/"Nano Banana") pensada como `imagen_inicial` de
+  generar_video_ia — la misma GEMINI_API_KEY (misma facturación de Veo)
+  sirve para esto, no hace falta ninguna cuenta nueva."""
 from __future__ import annotations
 
 import logging
@@ -53,6 +57,31 @@ MODELO_VEO_POR_DEFECTO = "veo-3.1-generate-preview"
 ASPECT_RATIOS_VALIDOS = {"16:9", "9:16"}
 DURACIONES_VALIDAS = {"4", "6", "8"}
 TIMEOUT_POLLING_SEG = 360  # 6 min — el máximo documentado por Google en horas pico
+
+# Mapeo calidad -> modelo real. "lite"/"fast" son para VALIDAR barato un
+# prompt/composición nueva antes de pagar "standard" (la que da el mejor
+# resultado, y la que usamos por defecto para la versión final). Precios
+# verificados (720p, sin audio): lite ~$0.05/seg, fast ~$0.10/seg,
+# standard ~$0.20/seg — con audio nativo cuesta ~el doble, por eso
+# generate_audio=False por defecto (igual reemplazamos el audio con
+# ElevenLabs/Azure, pagar el audio nativo de Veo era plata tirada).
+MODELOS_POR_CALIDAD = {
+    "lite": "veo-3.1-lite-generate-preview",
+    "fast": "veo-3.1-fast-generate-preview",
+    "standard": MODELO_VEO_POR_DEFECTO,
+}
+
+# Mismo criterio que MODELOS_POR_CALIDAD pero para imagen fija. Precios
+# verificados en ai.google.dev/gemini-api/docs/pricing (2026-09-17):
+# "boceto" ~$0.04/imagen — para probar composición/prompt barato antes de
+# pagar "pro" (Nano Banana Pro, ~$0.13-0.24/imagen, la mejor calidad —
+# usar solo cuando el boceto ya convenció). Sin free tier vía API para
+# ninguno de los tres (verificado contra la doc oficial de precios).
+MODELOS_IMAGEN_POR_CALIDAD = {
+    "boceto": "gemini-2.5-flash-image",
+    "flash": "gemini-3.1-flash-image",
+    "pro": "gemini-3-pro-image",
+}
 
 
 def leer_url(url: str, max_caracteres: int = 6000) -> dict:
@@ -88,20 +117,62 @@ def leer_url(url: str, max_caracteres: int = 6000) -> dict:
     }
 
 
+def _cargar_imagen_local(ruta: str):
+    """Carga un archivo de imagen local (png/jpg) como types.Image, para
+    `imagen_inicial`/`imagenes_referencia` de generar_video_ia."""
+    from google.genai import types
+
+    ruta_path = Path(ruta)
+    ruta_abs = ruta_path if ruta_path.is_absolute() else REPO_ROOT / ruta_path
+    if not ruta_abs.exists():
+        raise RuntimeError(f"No existe la imagen: {ruta_abs}")
+    mime = "image/png" if ruta_abs.suffix.lower() == ".png" else "image/jpeg"
+    return types.Image(image_bytes=ruta_abs.read_bytes(), mime_type=mime)
+
+
 def generar_video_ia(
     prompt: str,
     nombre_salida: str,
     aspect_ratio: str = "9:16",
     duracion_seg: str = "8",
+    calidad: str = "standard",
+    generate_audio: bool = False,
+    imagen_inicial: str | None = None,
+    imagenes_referencia: list[str] | None = None,
+    negative_prompt: str | None = None,
+    seed: int | None = None,
 ) -> dict:
     """Genera un video real con Veo a partir de `prompt` (texto libre,
     en inglés — Veo entiende mejor inglés, ver system prompt del agente).
 
     OJO idioma/audio: este proyecto narra en francés quebequense aparte
     (ElevenLabs/Azure, ver reel_generator.py) — `prompt` NO debe pedir
-    diálogo hablado ni narración; Veo puede generar audio nativo si el
-    prompt lo sugiere, y eso chocaría con la narración que se agrega
-    después. Pedí solo imagen/movimiento/ambiente, sin diálogo.
+    diálogo hablado ni narración. `generate_audio=False` por defecto NO
+    significa "pedile a Veo que no genere audio" — verificado en vivo
+    (2026-09-18): con una GEMINI_API_KEY común (Gemini Developer API),
+    el parámetro generate_audio ni siquiera se puede enviar, da error
+    ValueError sea cual sea su valor ("solo soportado en Gemini
+    Enterprise Agent Platform mode"). Con `generate_audio=False` (el
+    default) simplemente NO se manda el parámetro, y el audio nativo que
+    venga con el clip es el que Veo decida — igual lo reemplazamos/
+    mezclamos con ElevenLabs/Azure después, así que no importa. Pasar
+    `generate_audio=True` a propósito SÍ lo manda explícito (puede fallar
+    si tu key tampoco soporta eso — no confirmado).
+
+    `calidad`: "lite" (~$0.05/seg, para VALIDAR barato un prompt/
+    composición nueva) | "fast" (~$0.10/seg) | "standard" (~$0.20/seg,
+    default — usar solo cuando el prompt ya está validado). Ir de lite a
+    standard cuando el resultado convence, no al revés.
+
+    `imagen_inicial`: ruta a una imagen local que fija el primer frame —
+    ancla la composición/sujeto exacto, deja solo el movimiento como
+    variable. `imagenes_referencia`: hasta 3 rutas de imágenes locales
+    para guiar el estilo visual (ver VideoGenerationReferenceImage).
+
+    `seed`/`negative_prompt`: existen en el SDK instalado aunque la doc
+    pública de Veo 3.1 no los documenta — probalos con cautela, su efecto
+    real no está confirmado (a diferencia del resto de esta función, que
+    sí está verificado en vivo).
 
     Llamada asíncrona del lado de Google — esta función espera
     (polling cada 10s) hasta que el video esté listo o hasta
@@ -120,19 +191,55 @@ def generar_video_ia(
         raise RuntimeError(f"aspect_ratio {aspect_ratio!r} inválido. Opciones: {sorted(ASPECT_RATIOS_VALIDOS)}.")
     if duracion_seg not in DURACIONES_VALIDAS:
         raise RuntimeError(f"duracion_seg {duracion_seg!r} inválida. Opciones: {sorted(DURACIONES_VALIDAS)}.")
+    if calidad not in MODELOS_POR_CALIDAD:
+        raise RuntimeError(f"calidad {calidad!r} inválida. Opciones: {sorted(MODELOS_POR_CALIDAD)}.")
+    if imagenes_referencia and len(imagenes_referencia) > 3:
+        raise RuntimeError(f"imagenes_referencia admite máximo 3, llegaron {len(imagenes_referencia)}.")
 
     from google import genai
     from google.genai import types
 
-    modelo = os.getenv("GEMINI_VEO_MODEL", MODELO_VEO_POR_DEFECTO)
+    modelo = os.getenv("GEMINI_VEO_MODEL") or MODELOS_POR_CALIDAD[calidad]
     client = genai.Client(api_key=key)
 
-    log.info("Pidiendo video a Veo (%s, %s, %ss): %r", modelo, aspect_ratio, duracion_seg, prompt)
-    operation = client.models.generate_videos(
-        model=modelo,
-        prompt=prompt,
-        config=types.GenerateVideosConfig(aspect_ratio=aspect_ratio, duration_seconds=duracion_seg),
+    config_kwargs = dict(
+        aspect_ratio=aspect_ratio,
+        duration_seconds=duracion_seg,
     )
+    # OJO (verificado en vivo el 2026-09-18, contradice lo que decía el
+    # comentario original de esta función): con una GEMINI_API_KEY común
+    # ("Gemini Developer API"), el parámetro generate_audio NI SIQUIERA SE
+    # PUEDE ENVIAR — la API devuelve ValueError "generate_audio parameter
+    # is only supported in Gemini Enterprise Agent Platform mode", pase lo
+    # que pase su valor (True o False). Solo lo mandamos si se pidió
+    # generate_audio=True a propósito (ahí el usuario asume el riesgo de
+    # que falle); dejarlo en False (el default) significa "no lo mandes",
+    # no "pedile a Veo que no genere audio" — con esta key no hay forma de
+    # controlar eso, el audio nativo que venga es el que Veo decida.
+    if generate_audio:
+        config_kwargs["generate_audio"] = generate_audio
+    if negative_prompt:
+        config_kwargs["negative_prompt"] = negative_prompt
+    if seed is not None:
+        config_kwargs["seed"] = seed
+    if imagenes_referencia:
+        config_kwargs["reference_images"] = [
+            types.VideoGenerationReferenceImage(
+                image=_cargar_imagen_local(ruta),
+                reference_type=types.VideoGenerationReferenceType.STYLE,
+            )
+            for ruta in imagenes_referencia
+        ]
+
+    generate_kwargs = dict(model=modelo, prompt=prompt, config=types.GenerateVideosConfig(**config_kwargs))
+    if imagen_inicial:
+        generate_kwargs["image"] = _cargar_imagen_local(imagen_inicial)
+
+    log.info(
+        "Pidiendo video a Veo (%s, calidad=%s, %s, %ss, audio=%s): %r",
+        modelo, calidad, aspect_ratio, duracion_seg, generate_audio, prompt,
+    )
+    operation = client.models.generate_videos(**generate_kwargs)
 
     inicio = time.time()
     while not operation.done:
@@ -154,8 +261,96 @@ def generar_video_ia(
         "status": "generado",
         "ruta": str(salida.relative_to(REPO_ROOT)),
         "modelo": modelo,
+        "calidad": calidad,
         "aspect_ratio": aspect_ratio,
         "duracion_seg": duracion_seg,
+        "generate_audio": generate_audio,
+    }
+
+
+def generar_imagen_ia(
+    prompt: str,
+    nombre_salida: str,
+    aspect_ratio: str = "9:16",
+    calidad: str = "boceto",
+    imagenes_referencia: list[str] | None = None,
+) -> dict:
+    """Genera una imagen fija con Gemini ("Nano Banana") a partir de
+    `prompt` (texto libre, en inglés). Pensada como punto de partida de
+    calidad para `generar_video_ia` (parámetro `imagen_inicial`): ancla
+    composición/sujeto/estilo antes de animarlo con Veo.
+
+    `calidad`: "boceto" (gemini-2.5-flash-image, ~$0.04/imagen — para
+    probar composición/prompt barato) | "flash" (gemini-3.1-flash-image,
+    ~$0.05-0.15) | "pro" (gemini-3-pro-image / Nano Banana Pro,
+    ~$0.13-0.24, la mejor calidad — usar solo cuando el boceto ya
+    convenció). Default "boceto": ir subiendo de calidad recién cuando el
+    resultado lo justifica, no al revés.
+
+    `imagenes_referencia`: hasta 3 rutas de imágenes locales (ej. una
+    captura real de riveintelligente.ca/taskdoctor.ai) para guiar estilo/
+    fidelidad de marca — se pasan como parte del mismo mensaje, junto con
+    `prompt`, porque esta API es una llamada de chat multimodal normal
+    (no un endpoint de imagen aparte).
+
+    Guarda en data/reels/video_ia/{nombre_salida}.png. Sin polling — a
+    diferencia de Veo, esta llamada es síncrona."""
+    key = os.getenv("GEMINI_API_KEY", "")
+    if not key:
+        raise RuntimeError(
+            "Falta GEMINI_API_KEY en .env — la misma key/facturación que "
+            "ya usamos para Veo sirve para esto, no hace falta ninguna "
+            "cuenta nueva. Sacala en aistudio.google.com/apikey."
+        )
+    if aspect_ratio not in ASPECT_RATIOS_VALIDOS:
+        raise RuntimeError(f"aspect_ratio {aspect_ratio!r} inválido. Opciones: {sorted(ASPECT_RATIOS_VALIDOS)}.")
+    if calidad not in MODELOS_IMAGEN_POR_CALIDAD:
+        raise RuntimeError(f"calidad {calidad!r} inválida. Opciones: {sorted(MODELOS_IMAGEN_POR_CALIDAD)}.")
+    if imagenes_referencia and len(imagenes_referencia) > 3:
+        raise RuntimeError(f"imagenes_referencia admite máximo 3, llegaron {len(imagenes_referencia)}.")
+
+    from google import genai
+    from google.genai import types
+
+    modelo = MODELOS_IMAGEN_POR_CALIDAD[calidad]
+    client = genai.Client(api_key=key)
+
+    partes = [types.Part.from_text(text=prompt)]
+    for ruta in imagenes_referencia or []:
+        imagen = _cargar_imagen_local(ruta)
+        partes.append(types.Part.from_bytes(data=imagen.image_bytes, mime_type=imagen.mime_type))
+
+    log.info("Pidiendo imagen a Gemini (%s, calidad=%s, %s): %r", modelo, calidad, aspect_ratio, prompt)
+    respuesta = client.models.generate_content(
+        model=modelo,
+        contents=partes,
+        config=types.GenerateContentConfig(
+            response_modalities=["IMAGE"],
+            image_config=types.ImageConfig(aspect_ratio=aspect_ratio),
+        ),
+    )
+
+    if not respuesta.candidates:
+        return {"status": "error", "detalle": f"Gemini no devolvió candidatos: {getattr(respuesta, 'prompt_feedback', 'motivo desconocido')}"}
+
+    imagen_generada = None
+    for parte in respuesta.candidates[0].content.parts:
+        imagen_generada = parte.as_image()
+        if imagen_generada is not None:
+            break
+    if imagen_generada is None:
+        return {"status": "error", "detalle": "Gemini respondió sin imagen (puede haber bloqueado el prompt por seguridad)."}
+
+    SALIDA_DIR.mkdir(parents=True, exist_ok=True)
+    salida = SALIDA_DIR / f"{nombre_salida}.png"
+    salida.write_bytes(imagen_generada.image_bytes)
+
+    return {
+        "status": "generado",
+        "ruta": str(salida.relative_to(REPO_ROOT)),
+        "modelo": modelo,
+        "calidad": calidad,
+        "aspect_ratio": aspect_ratio,
     }
 
 

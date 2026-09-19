@@ -250,6 +250,15 @@ def subir_a_drive(ruta_local: str, carpeta_id: str) -> dict:
     return {"status": "sincronizado", "file_id": archivo.get("id")}
 
 
+def carpeta_drive_por_nombre(nombre: str) -> str:
+    """Wrapper público de _buscar_o_crear_carpeta_drive — la busca/crea sin
+    que quien la llama tenga que construir su propio `service` de Drive.
+    Usar cuando hace falta una carpeta fija por nombre (ej. backups de
+    repos) sin depender de un folder id pegado a mano en .env."""
+    service = build("drive", "v3", credentials=_get_credentials())
+    return _buscar_o_crear_carpeta_drive(nombre, service)
+
+
 def _buscar_o_crear_carpeta_drive(nombre: str, service) -> str:
     """Busca una carpeta por nombre; si no existe, la crea. Con esto no
     hace falta que nadie copie un folder id a mano (a diferencia de
