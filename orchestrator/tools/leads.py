@@ -1,5 +1,9 @@
 """Waitlist propia + tracking de leads para Meta (Instagram/Facebook Ads).
 
+DESCONECTADO desde 2026-09-19 — ver el docstring de orchestrator/web/
+routers/leads.py. La landing real de TaskDoctor ya no vive en este repo ni
+le pega a esto; quedó intacto por si hace falta reactivarlo.
+
 Por qué existe esto: taskdoctor.ai no es nuestro — somos partners del
 desarrollador, no tenemos acceso a su código para instalarle el Meta Pixel
 ni su Conversions API (ver conversación del 2026-09-19). En vez de eso,
@@ -50,12 +54,53 @@ META_CAPI_URL = "https://graph.facebook.com/{version}/{pixel_id}/events"
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
+# Mismos valores que ofrece el <select> del formulario (lp_taskdoctor.html /
+# TaskDoctorLanding.tsx) — cualquier otra cosa se descarta en vez de
+# guardarse tal cual, mismo criterio que CRM.statuses en el Apps Script de
+# Rive Intelligente (crm/apps-script/Code.gs).
+URGENCIAS_VALIDAS = {"early_access", "automate_now", "find_opportunities", "exploring"}
+
+# Ventana de dedup + honeypot: mismo criterio anti-spam que ya probó
+# funcionar en crm/apps-script/Code.gs (RiveIntelligente) — acá en memoria
+# porque este proceso no tiene una CacheService compartida. Se resetea en
+# cada redeploy, es intencional: es para frenar doble-submit/spam en
+# ráfaga, no un registro de auditoría (eso es data/leads/*.jsonl).
+_VENTANA_DUPLICADO_SEG = 600
+_leads_recientes: dict[str, float] = {}
+
+
+def _limpiar(valor: object, largo_max: int) -> str:
+    """Recorta y despoja caracteres de control — mismo criterio que
+    `clean_()` en el Apps Script de RiveIntelligente. Nunca confiar en
+    texto libre del cliente sin pasar por acá antes de guardarlo o
+    reenviarlo a un tercero (Meta)."""
+    texto = "" if valor is None else str(valor)
+    texto = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", texto)
+    return texto.strip()[:largo_max]
+
 
 def _validar_email(email: str) -> str:
-    email = (email or "").strip()
+    email = _limpiar(email, 254)
     if not _EMAIL_RE.match(email):
         raise ValueError(f"Email inválido: {email!r}")
     return email
+
+
+def _es_duplicado_reciente(email: str) -> bool:
+    """True si este email ya registró un lead en los últimos 10 minutos —
+    evita que un doble-click (o un bot insistente) genere múltiples
+    eventos reales hacia la Conversions API de Meta. Purga oportunista de
+    entradas vencidas para no crecer sin límite en un proceso long-lived."""
+    ahora = time.time()
+    for clave, vencimiento in list(_leads_recientes.items()):
+        if vencimiento < ahora:
+            del _leads_recientes[clave]
+
+    clave = hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()
+    if clave in _leads_recientes:
+        return True
+    _leads_recientes[clave] = ahora + _VENTANA_DUPLICADO_SEG
+    return False
 
 
 def _hash_sha256(valor: str) -> str:
@@ -153,22 +198,39 @@ def registrar_lead_taskdoctor(
     fbc: str | None = None,
     pixel_id: str | None = None,
     access_token: str | None = None,
+    honeypot: str | None = None,
 ) -> dict:
     """Orquesta un lead completo de la waitlist propia de TaskDoctor:
     valida el email, lo guarda local, y si hay Pixel/token configurados,
     lo reenvía a la Conversions API. `pixel_id`/`access_token` normalmente
     vienen de settings (ver orchestrator/config.py) — se pasan explícitos
     acá para que esta función no dependa de importar config y sea fácil
-    de probar sola."""
+    de probar sola.
+
+    `honeypot`: campo señuelo del formulario (ej. name="website") que un
+    humano nunca completa pero un bot casi siempre sí — mismo patrón que
+    ya prueba funcionar en crm/apps-script/Code.gs de RiveIntelligente.
+    Si viene con contenido, se responde éxito SIN guardar nada ni gastar
+    la llamada a Meta — no delatarle al bot que lo detectamos."""
+    if _limpiar(honeypot, 200):
+        log.info("Lead descartado por honeypot (probable bot).")
+        return {"status": "guardado", "local": None, "meta_capi": {"status": "omitido", "detalle": "honeypot"}}
+
     email = _validar_email(email)
+    event_id = _limpiar(event_id, 100) or hashlib.sha256(f"{email}{time.time()}".encode()).hexdigest()[:36]
+    urgency = urgency if urgency in URGENCIAS_VALIDAS else None
+
+    if _es_duplicado_reciente(email):
+        log.info("Lead duplicado (mismo email en los últimos %ss) — no se reenvía.", _VENTANA_DUPLICADO_SEG)
+        return {"status": "guardado", "local": None, "duplicado": True, "meta_capi": {"status": "omitido", "detalle": "duplicado reciente"}}
 
     registro = {
         "email": email,
         "urgency": urgency,
-        "fuente": fuente or "lp_taskdoctor",
+        "fuente": _limpiar(fuente, 80) or "lp_taskdoctor",
         "event_id": event_id,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "ip": client_ip,
+        "ip": _limpiar(client_ip, 45) or None,  # 45 = largo máximo de una IPv6
     }
     ruta_local = guardar_lead_local("taskdoctor", registro)
 
@@ -180,11 +242,11 @@ def registrar_lead_taskdoctor(
             access_token=access_token,
             event_id=event_id,
             email=email,
-            event_source_url=event_source_url,
-            client_ip=client_ip,
-            client_user_agent=client_user_agent,
-            fbp=fbp,
-            fbc=fbc,
+            event_source_url=_limpiar(event_source_url, 600),
+            client_ip=_limpiar(client_ip, 45) or None,
+            client_user_agent=_limpiar(client_user_agent, 400) or None,
+            fbp=_limpiar(fbp, 200) or None,
+            fbc=_limpiar(fbc, 200) or None,
         )
         resultado["meta_capi"] = capi
     else:

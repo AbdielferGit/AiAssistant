@@ -91,6 +91,14 @@
     <p>Free to start. Under 1 minute to set up. We'll email you as soon as your spot opens.</p>
 
     <form id="td-form">
+      <!-- Honeypot anti-spam: invisible para una persona, casi siempre lo
+           completa un bot. Si llega con contenido, el backend descarta el
+           lead en silencio (ver orchestrator/tools/leads.py). -->
+      <div style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true">
+        <label for="td-website">Website</label>
+        <input type="text" id="td-website" name="website" tabindex="-1" autocomplete="off">
+      </div>
+
       <label for="td-email">Email address</label>
       <input type="email" id="td-email" name="email" placeholder="you@company.com" required autocomplete="email">
 
@@ -175,6 +183,7 @@ form.addEventListener('submit', function (ev) {
       event_id: eventId,
       fbp: leerCookie('_fbp'),
       fbc: leerCookie('_fbc'),
+      website: document.getElementById('td-website').value,
     }),
   }).then(function (r) {
     if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Error'); });
