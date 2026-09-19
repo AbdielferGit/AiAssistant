@@ -64,3 +64,18 @@ services:
         sync: false
       - key: MESSENGER_PAGE_ACCESS_TOKEN
         sync: false
+
+      # --- Video/imagen con IA (Veo, Nano Banana — agente productor_reels) ---
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_VEO_MODEL
+        sync: false  # opcional, por defecto veo-3.1-generate-preview si se deja vacío
+
+      # --- Waitlist de TaskDoctor + Meta Pixel/Conversions API (ver
+      # orchestrator/tools/leads.py) — sin estas dos, el formulario de
+      # riveintelligente.ca/taskdoctor sigue guardando el lead local,
+      # pero no manda nada a Meta ---
+      - key: META_PIXEL_ID
+        sync: false
+      - key: META_CAPI_ACCESS_TOKEN
+        sync: false
