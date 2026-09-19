@@ -32,6 +32,7 @@ from pathlib import Path
 
 import anthropic
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -41,7 +42,7 @@ from orchestrator.agents import AGENTES, Agent_0
 from orchestrator.agents.base import system_prompt_con_fecha
 from orchestrator.config import settings
 from orchestrator.router import elegir_agente
-from orchestrator.tools import reel_generator, reels_defaults
+from orchestrator.tools import leads, reel_generator, reels_defaults
 from orchestrator.web import auth
 
 # Tools irreversibles que, además del modal normal, exigen un PIN de un
@@ -53,6 +54,23 @@ TOOLS_CON_PIN = {"agregar_contacto"}
 
 log = logging.getLogger("orchestrator.web")
 app = FastAPI(title="AiAssistant web")
+
+# CORS solo para /api/leads/* (waitlist de TaskDoctor, ver
+# orchestrator/tools/leads.py) — la landing vive en riveintelligente.ca
+# (repo aparte, github.com/AbdielferGit/RiveIntelligente — es la web real en
+# Bluehost), un dominio distinto al de esta app, así que el fetch del
+# navegador necesita esto o el browser lo bloquea. El resto de la API
+# (/api/chat, /api/reels/*, etc.) no lo necesita — usan cookie de sesión, no
+# tiene sentido habilitarles origen cruzado. FastAPI no deja limitar
+# CORSMiddleware a un prefijo de ruta directamente, así que queda global; no
+# es un riesgo real porque las rutas de leads no usan cookies/sesión (ver
+# LeadPayload) y el resto de rutas igual exige su propia auth.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://riveintelligente.ca", "https://www.riveintelligente.ca", "http://localhost:3000"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
@@ -110,6 +128,16 @@ class ReelGenerarPayload(BaseModel):
     beats: list[dict] | None = None  # si no viene, usa el guion aprobado del producto
     proveedor_voz: str | None = None  # None = usa el default de reels_defaults
     voz_id: str | None = None
+
+
+class LeadPayload(BaseModel):
+    """Waitlist propia (ver orchestrator/tools/leads.py) — pública, sin
+    login: la llena gente que nunca usó el chat, viniendo de un anuncio."""
+    email: str
+    event_id: str  # generado en el navegador (lp_taskdoctor.html) — dedup con el fbq() del cliente
+    urgency: str | None = None
+    fbp: str | None = None  # cookie _fbp que pone el propio Pixel de Meta
+    fbc: str | None = None  # cookie _fbc (solo existe si vino de un clic de anuncio con fbclid)
 
 
 def _clave_conversacion(sesion_id: str, agente_id: str) -> str:
@@ -485,3 +513,44 @@ async def reels_productos(request: Request):
         }
         for nombre, datos in reels_defaults.PRODUCTOS.items()
     }
+
+
+# --- Waitlist propia de TaskDoctor (para Meta Ads) -----------------------
+# Pública, SIN login — es la landing a la que apunta la campaña de
+# Instagram/Facebook, la va a abrir gente que nunca usó el chat. Ver
+# orchestrator/tools/leads.py para el porqué de que esto exista (taskdoctor.ai
+# no es nuestro, no podíamos instalarle el Pixel/Conversions API ahí).
+
+@app.get("/leads/taskdoctor")
+async def lp_taskdoctor():
+    return FileResponse(_STATIC_DIR / "lp_taskdoctor.html")
+
+
+@app.get("/api/leads/config")
+async def leads_config():
+    """Pública a propósito: el Pixel ID de Meta NO es un secreto (viaja
+    siempre visible en el JS de cualquier sitio con Meta Pixel) — solo el
+    access_token de la Conversions API lo es, y ese nunca sale del
+    servidor. Si META_PIXEL_ID no está en .env, el frontend simplemente no
+    inicializa el Pixel (no rompe el formulario)."""
+    return {"pixel_id": settings.meta_pixel_id or None}
+
+
+@app.post("/api/leads/taskdoctor")
+async def leads_taskdoctor(payload: LeadPayload, request: Request):
+    try:
+        resultado = leads.registrar_lead_taskdoctor(
+            email=payload.email,
+            event_id=payload.event_id,
+            event_source_url=str(request.base_url) + "leads/taskdoctor",
+            urgency=payload.urgency,
+            client_ip=request.client.host if request.client else None,
+            client_user_agent=request.headers.get("user-agent"),
+            fbp=payload.fbp,
+            fbc=payload.fbc,
+            pixel_id=settings.meta_pixel_id or None,
+            access_token=settings.meta_capi_access_token or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return resultado

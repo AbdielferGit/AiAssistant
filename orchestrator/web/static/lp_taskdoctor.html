@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TaskDoctor — Find browser work worth automating</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<style>
+  :root{
+    --cream:#FFFDFA; --ink:#061226; --naranja:#FF6716; --naranja-deep:#F25B0C;
+    --naranja-claro:#FFB282; --gris-borde:#E8E0D6; --gris-texto:#6E6C64;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--cream); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:0 20px 4rem}
+  header{padding:1.5rem 0 .5rem;display:flex;align-items:center;gap:.5rem}
+  header .dot{width:10px;height:10px;border-radius:50%;background:var(--naranja)}
+  header span{font-weight:800;font-size:1.1rem;letter-spacing:-.01em}
+
+  h1{font-size:clamp(1.7rem,6vw,2.2rem);font-weight:800;line-height:1.15;letter-spacing:-.01em;margin:1.2rem 0 .3rem;text-wrap:balance}
+  h1 .accent{color:var(--naranja-deep)}
+  .lede{color:var(--gris-texto);font-size:1.02rem;line-height:1.5;margin:0 0 1.6rem;max-width:44ch}
+
+  .chips{display:flex;flex-direction:column;gap:.55rem;margin-bottom:1.8rem}
+  .chip{display:flex;align-items:center;gap:.6rem;font-size:.92rem;font-weight:600}
+  .chip .ic{
+    width:26px;height:26px;border-radius:50%;background:var(--naranja);flex:none;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .chip .ic svg{width:13px;height:13px}
+
+  .statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--gris-borde);border:1px solid var(--gris-borde);border-radius:14px;overflow:hidden;margin-bottom:2rem}
+  .stat{background:#fff;padding:1rem .6rem;text-align:center}
+  .stat b{display:block;font-size:1.4rem;font-weight:800;color:var(--naranja-deep)}
+  .stat span{font-size:.72rem;color:var(--gris-texto);font-weight:600}
+
+  .card{
+    background:#fff;border:1px solid var(--gris-borde);border-radius:18px;
+    padding:1.5rem 1.4rem;box-shadow:0 8px 30px -14px rgba(6,18,38,.15);
+  }
+  .card h2{font-size:1.15rem;font-weight:800;margin:0 0 .25rem}
+  .card p{color:var(--gris-texto);font-size:.88rem;line-height:1.5;margin:0 0 1.1rem}
+
+  label{display:block;font-size:.78rem;font-weight:700;color:var(--gris-texto);margin-bottom:.35rem}
+  input[type=email], select{
+    width:100%;padding:.75rem .9rem;border:1.5px solid var(--gris-borde);border-radius:10px;
+    font-size:.95rem;font-family:inherit;background:var(--cream);color:var(--ink);margin-bottom:1rem;
+  }
+  input[type=email]:focus, select:focus{outline:2px solid var(--naranja);outline-offset:1px}
+
+  button.submit{
+    width:100%;background:var(--naranja);color:#fff;border:none;padding:.9rem 1rem;
+    border-radius:12px;font-weight:700;font-size:.98rem;cursor:pointer;font-family:inherit;
+    display:flex;align-items:center;justify-content:center;gap:.5rem;
+  }
+  button.submit:disabled{opacity:.55;cursor:default}
+  .fineprint{font-size:.74rem;color:var(--gris-texto);text-align:center;margin-top:.8rem}
+
+  .status{font-size:.88rem;margin-top:.9rem;text-align:center;display:none}
+  .status.ok{color:#1E7A4C;display:block}
+  .status.error{color:#B4740E;display:block}
+
+  .chrome-badge{display:flex;align-items:center;justify-content:center;gap:.4rem;margin-top:1.3rem;font-size:.78rem;color:var(--gris-texto)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header><span class="dot"></span><span>TaskDoctor</span></header>
+
+  <h1>Find browser work worth <span class="accent">automating</span>. Without monitoring employees.</h1>
+  <p class="lede">Install the extension to spot repetitive work and choose what to automate first — no screenshots, no page content, ever.</p>
+
+  <div class="chips">
+    <div class="chip"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12l6 6L20 6" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>No screenshots</div>
+    <div class="chip"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12l6 6L20 6" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>No page text</div>
+    <div class="chip"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12l6 6L20 6" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>No employee monitoring</div>
+  </div>
+
+  <div class="statgrid">
+    <div class="stat"><b>32%</b><span>opportunities found</span></div>
+    <div class="stat"><b>12.4h</b><span>found per week</span></div>
+    <div class="stat"><b>$620</b><span>est. savings/week</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Install Free Extension</h2>
+    <p>Free to start. Under 1 minute to set up. We'll email you as soon as your spot opens.</p>
+
+    <form id="td-form">
+      <label for="td-email">Email address</label>
+      <input type="email" id="td-email" name="email" placeholder="you@company.com" required autocomplete="email">
+
+      <label for="td-urgency">What best describes you?</label>
+      <select id="td-urgency" name="urgency">
+        <option value="early_access" selected>I want early access as soon as possible</option>
+        <option value="automate_now">I have tasks I need to automate now</option>
+        <option value="find_opportunities">I want to find automation opportunities</option>
+        <option value="exploring">I am just exploring</option>
+      </select>
+
+      <button class="submit" type="submit" id="td-submit">Install Free Extension</button>
+      <div class="fineprint">Works on Chrome. More browsers coming soon.</div>
+    </form>
+
+    <div class="status" id="td-status"></div>
+  </div>
+
+  <div class="chrome-badge">Verified on taskdoctor.ai</div>
+
+</div>
+
+<script>
+// --- Meta Pixel: se inicializa solo si el servidor tiene un pixel_id
+// configurado (META_PIXEL_ID en .env) — si no, esta página funciona igual,
+// simplemente no manda nada a Meta. ------------------------------------
+(function () {
+  fetch('/api/leads/config').then(function (r) { return r.json(); }).then(function (cfg) {
+    if (!cfg.pixel_id) return;
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+    n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+    document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', cfg.pixel_id);
+    fbq('track', 'PageView');
+  }).catch(function () { /* sin pixel, sin drama — el formulario sigue funcionando */ });
+})();
+
+function leerCookie(nombre) {
+  var match = document.cookie.match('(^|;)\\s*' + nombre + '\\s*=\\s*([^;]+)');
+  return match ? match.pop() : null;
+}
+
+function uuidv4() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+var form = document.getElementById('td-form');
+var submitBtn = document.getElementById('td-submit');
+// OJO: nunca nombres una var global "status" — choca en silencio con la
+// propiedad nativa window.status (la vieja barra de estado del navegador);
+// las asignaciones a status.textContent se pierden sin ningún error.
+var statusEl = document.getElementById('td-status');
+
+form.addEventListener('submit', function (ev) {
+  ev.preventDefault();
+  var email = document.getElementById('td-email').value.trim();
+  var urgency = document.getElementById('td-urgency').value;
+  var eventId = uuidv4();
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Sending...';
+  statusEl.className = 'status';
+
+  // Señal del lado del navegador — dispara YA, no espera al servidor.
+  // El mismo eventId se manda al servidor para que la Conversions API
+  // reenvíe el MISMO evento (no uno nuevo) y Meta lo deduplique.
+  if (typeof fbq === 'function') {
+    fbq('track', 'Lead', {}, { eventID: eventId });
+  }
+
+  fetch('/api/leads/taskdoctor', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: email,
+      urgency: urgency,
+      event_id: eventId,
+      fbp: leerCookie('_fbp'),
+      fbc: leerCookie('_fbc'),
+    }),
+  }).then(function (r) {
+    if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Error'); });
+    return r.json();
+  }).then(function () {
+    statusEl.textContent = "You're on the list. Thank you!";
+    statusEl.className = 'status ok';
+    form.reset();
+    submitBtn.textContent = 'Install Free Extension';
+    submitBtn.disabled = false;
+  }).catch(function (err) {
+    statusEl.textContent = 'Something went wrong: ' + err.message;
+    statusEl.className = 'status error';
+    submitBtn.textContent = 'Install Free Extension';
+    submitBtn.disabled = false;
+  });
+});
+</script>
+</body>
+</html>

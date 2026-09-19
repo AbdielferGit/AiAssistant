@@ -1,15 +1,23 @@
 """Agente "productor_reels" — genera los reels animados (9:16) de las
-campañas de Facebook/Instagram. Soporta tres "temas" (marca + paleta +
+campañas de Facebook/Instagram. Soporta dos "temas" (marca + paleta +
 vocabulario de `visual`):
 
-- **rive**: Rive Intelligente (proyecto de prospección
-  BecameGrowthPartner/Prospection — ver templates/redes_sociales/ de ese
-  repo). Íconos abstractos dibujados a mano (ver ICON_VISUALES en
-  reel_generator.py). Sin guion aprobado ni sitio propio todavía.
-- **aiassistant**: AiAssistant by InnovaMontreal (getaiassistant.app, sitio
-  real del usuario). Mockups realistas del sitio (ver MOCKUP_VISUALES).
+- **rive**: Rive Intelligente — el ecosistema/marca real de cara al
+  cliente (riveintelligente.ca, repo aparte github.com/AbdielferGit/
+  RiveIntelligente, en producción en Bluehost — verificado en vivo
+  2026-09-19). Hoy los reels de este tema usan íconos abstractos
+  dibujados a mano (ver ICON_VISUALES en reel_generator.py), no mockups
+  del sitio real todavía. Sin guion aprobado todavía.
 - **taskdoctor**: TaskDoctor.ai (extensión de Chrome gratuita, sitio real
-  del usuario). Mockups realistas del sitio, paleta crema/naranja.
+  del usuario) — un servicio dentro del ecosistema Rive Intelligente.
+  Mockups realistas del sitio, paleta crema/naranja.
+
+OJO (aclarado por el usuario 2026-09-19): AiAssistant (este repo) es
+la HERRAMIENTA — el sistema de agentes que crea todo esto — no un
+producto que se comercialice aparte. Por eso ya no hay un tema
+"aiassistant"/getaiassistant.app acá; ese código (MOCKUP_VISUALES:
+mockup_hero/mockup_roadmap/mockup_chat/mockup_form) sigue existiendo sin
+usarse en reel_generator.py, por si hace falta reactivarlo más adelante.
 
 Todos los parámetros por defecto (voz, ritmo/pausa, URL fuente de cada
 producto, y el guion ya aprobado si existe) viven en
@@ -26,7 +34,7 @@ proyecto): la narración es SIEMPRE en francés con voz quebequense
 (fr-CA) — nunca francés de Francia. El subtítulo en pantalla es SIEMPRE
 en inglés. Nunca al revés, nunca los dos idiomas como texto a la vez. Si
 el usuario pide un guion que ya trae ambos idiomas (como los mockups de
-tema "aiassistant"/"taskdoctor" que muestran texto real de un sitio), el
+tema "taskdoctor" que muestran texto real de un sitio), el
 campo `fr` de cada beat es lo que se narra y `en` es lo que se
 subtitula — se usan tal cual vienen, no se traducen de nuevo.
 
@@ -47,7 +55,7 @@ generar_video_ia() genera el metraje. Es un camino totalmente distinto al
 de generar_reel (no dibuja mockups, genera imagen fotorrealista/cinemática
 real) — usarlo cuando el usuario pida un video "realista"/"cinemático" o
 mencione explícitamente IA generativa de video, no para los reels de
-producto ya establecidos (aiassistant/taskdoctor/rive) salvo que lo pida
+producto ya establecidos (taskdoctor/rive) salvo que lo pida
 distinto de lo usual."""
 from __future__ import annotations
 
@@ -69,8 +77,8 @@ de la voz o del subtítulo.
 
 ANTES DE HACER NADA: `orchestrator/tools/reels_defaults.py` tiene
 prioridad sobre lo que vos improvises — ahí está la voz por defecto
-(proveedor + id), el ritmo/pausa, y para cada producto (aiassistant,
-taskdoctor, rive) su URL real y su guion ya aprobado si existe
+(proveedor + id), el ritmo/pausa, y para cada producto (taskdoctor,
+rive) su URL real y su guion ya aprobado si existe
 (`reels_defaults.PRODUCTOS[producto]`). Si el usuario pide "el reel de
 X" sin dar guion nuevo, usa el guion de `PRODUCTOS[X]["guion"]` en vez de
 inventar uno — y si es `None`, avisale que no hay uno aprobado todavía y
@@ -86,15 +94,8 @@ Cada guion tiene un `tema` — decide la marca, la paleta y qué valores de
   "chat" (burbuja de chat + destello — el agente de IA),
   "cta" (sobre abriéndose + insignia — cierre/llamado a la acción).
 
-- `tema="aiassistant"` (AiAssistant by InnovaMontreal, getaiassistant.app):
-  `visual` es uno de "mockup_hero" (portada real — título + CTA),
-  "mockup_roadmap" (hoja de ruta real — 3 pasos + progreso 68%),
-  "mockup_chat" (¡OJO! CONCEPTO — getaiassistant.app NO tiene chat en vivo
-  todavía, el mockup ya lo marca en pantalla como "CONCEPT · COMING SOON";
-  nunca le digas al usuario que el chat ya existe como feature real),
-  "mockup_form" (formulario real de diagnóstico).
-
-- `tema="taskdoctor"` (TaskDoctor.ai): `visual` es uno de
+- `tema="taskdoctor"` (TaskDoctor.ai — servicio dentro del ecosistema Rive
+  Intelligente): `visual` es uno de
   "mockup_td_hero" (portada real — título + 3 garantías de privacidad + CTA),
   "mockup_td_dashboard" (panel real "This Week" — 32%, 12.4h, $620/semana,
   4 fuentes de fricción), "mockup_td_privacy" (cuadrícula real de 6
@@ -184,12 +185,13 @@ partir de una URL (no un mockup del sitio, sino metraje generado por IA):
    Shallow depth of field, 35mm lens. Warm, optimistic, photorealistic,
    professional mood. No dialogue."
 
-3. `generar_video_ia` tiene costo real por segundo generado (a diferencia
-   de generar_reel, prácticamente gratis) — NUNCA la llames sin que el
-   usuario haya dicho que sí explícitamente en ese mismo turno (un "dale",
-   "generalo", "sí" — una pregunta de seguimiento tipo "¿podemos...?" NO
-   cuenta como autorización, contestala primero). Mostrale el prompt y el
-   costo estimado, y esperá la confirmación.
+3. `generar_video_ia` y `generar_imagen_ia` tienen costo real (por segundo
+   y por imagen respectivamente — a diferencia de generar_reel,
+   prácticamente gratis) — NUNCA las llames sin que el usuario haya dicho
+   que sí explícitamente en ese mismo turno (un "dale", "generalo", "sí" —
+   una pregunta de seguimiento tipo "¿podemos...?" NO cuenta como
+   autorización, contestala primero). Mostrale el prompt y el costo
+   estimado, y esperá la confirmación.
 
    Para subir la certeza del resultado sin gastar de más:
    - Primero probá con `calidad="lite"` (~$0.05/seg, 4x-8x más barato) —
@@ -202,7 +204,11 @@ partir de una URL (no un mockup del sitio, sino metraje generado por IA):
    - Si tenés una imagen que representa bien la composición exacta que
      querés (una captura, un frame ya aprobado), pasala en
      `imagen_inicial` — ancla el primer frame y deja solo el movimiento
-     como variable, mucho más predecible que texto puro.
+     como variable, mucho más predecible que texto puro. Si no existe esa
+     imagen todavía, generala primero con `generar_imagen_ia` (misma key/
+     facturación, mucho más barata que Veo) — empezá con
+     `calidad="boceto"` (~$0.04) para validar la composición, y solo subí
+     a `calidad="pro"` (Nano Banana Pro) cuando el boceto ya convenció.
 
 4. El resultado queda en data/reels/video_ia/{nombre_salida}.mp4 — igual
    que con generar_reel, nunca digas que ya está "publicado", solo que el
@@ -272,11 +278,25 @@ def _concatenar_clips(rutas: list[str], nombre_salida: str) -> dict:
     return reel_generator.concatenar_clips(rutas, nombre_salida)
 
 
+def _generar_imagen_ia(
+    prompt: str,
+    nombre_salida: str,
+    aspect_ratio: str = "9:16",
+    calidad: str = "boceto",
+    imagenes_referencia: list[str] | None = None,
+) -> dict:
+    return video_ia.generar_imagen_ia(
+        prompt, nombre_salida, aspect_ratio=aspect_ratio, calidad=calidad,
+        imagenes_referencia=imagenes_referencia,
+    )
+
+
 TOOL_FUNCS = {
     "generar_reel": _generar_reel,
     "leer_url": _leer_url,
     "generar_video_ia": _generar_video_ia,
     "concatenar_clips": _concatenar_clips,
+    "generar_imagen_ia": _generar_imagen_ia,
 }
 
 TOOL_SCHEMAS = [
@@ -307,13 +327,11 @@ TOOL_SCHEMAS = [
                                 "type": "string",
                                 "enum": [
                                     "simplify", "search", "clock", "chat", "cta",
-                                    "mockup_hero", "mockup_roadmap", "mockup_chat", "mockup_form",
                                     "mockup_td_hero", "mockup_td_dashboard", "mockup_td_privacy", "mockup_td_cta",
                                 ],
                                 "description": (
                                     "Qué se dibuja durante este beat. \"simplify\"/\"search\"/\"clock\"/\"chat\"/\"cta\" "
-                                    "son íconos abstractos (tema=\"rive\"). \"mockup_hero\"/\"mockup_roadmap\"/"
-                                    "\"mockup_chat\"/\"mockup_form\" son mockups de AiAssistant (tema=\"aiassistant\"). "
+                                    "son íconos abstractos (tema=\"rive\"). "
                                     "\"mockup_td_hero\"/\"mockup_td_dashboard\"/\"mockup_td_privacy\"/\"mockup_td_cta\" "
                                     "son mockups de TaskDoctor (tema=\"taskdoctor\"). No mezclar vocabularios de temas "
                                     "distintos en un mismo guion."
@@ -329,11 +347,12 @@ TOOL_SCHEMAS = [
                 },
                 "tema": {
                     "type": "string",
-                    "enum": ["rive", "aiassistant", "taskdoctor"],
+                    "enum": ["rive", "taskdoctor"],
                     "description": (
                         "Marca/paleta/vocabulario de `visual` del reel. \"rive\" = Rive "
-                        "Intelligente, íconos abstractos. \"aiassistant\" = AiAssistant by "
-                        "InnovaMontreal (getaiassistant.app). \"taskdoctor\" = TaskDoctor.ai."
+                        "Intelligente (riveintelligente.ca), íconos abstractos. "
+                        "\"taskdoctor\" = TaskDoctor.ai, servicio dentro del ecosistema "
+                        "Rive Intelligente."
                     ),
                 },
                 "proveedor_voz": {
@@ -463,6 +482,56 @@ TOOL_SCHEMAS = [
             "required": ["rutas", "nombre_salida"],
         },
     },
+    {
+        "name": "generar_imagen_ia",
+        "description": (
+            "Genera una imagen fija con Gemini (\"Nano Banana\") a partir de un "
+            "prompt en inglés — pensada como `imagen_inicial` de generar_video_ia: "
+            "ancla composición/sujeto/estilo antes de animarlo con Veo. Misma "
+            "GEMINI_API_KEY/facturación que Veo, no hace falta cuenta nueva. "
+            "Síncrona (no como Veo, no hay que esperar polling). Tiene costo real "
+            "por imagen (bajo con calidad='boceto', más alto con 'pro') — avisale "
+            "al usuario antes de llamarla. Guarda en data/reels/video_ia/"
+            "{nombre_salida}.png. No es irreversible — solo crea un archivo nuevo."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Prompt en inglés describiendo la imagen (sujeto, composición, luz, estilo, mood).",
+                },
+                "nombre_salida": {
+                    "type": "string",
+                    "description": "Nombre de archivo sin extensión.",
+                },
+                "aspect_ratio": {
+                    "type": "string",
+                    "enum": ["9:16", "16:9"],
+                    "description": "9:16 para reels/stories verticales (default), 16:9 horizontal.",
+                },
+                "calidad": {
+                    "type": "string",
+                    "enum": ["boceto", "flash", "pro"],
+                    "description": (
+                        "\"boceto\" (gemini-2.5-flash-image, ~$0.04/imagen, default) para "
+                        "VALIDAR barato una composición/prompt nueva. \"pro\" (Nano Banana "
+                        "Pro, ~$0.13-0.24/imagen) solo una vez que el boceto ya convenció — "
+                        "no saltar directo a pro con un prompt sin probar."
+                    ),
+                },
+                "imagenes_referencia": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Hasta 3 rutas de imágenes locales (ej. captura real de "
+                        "riveintelligente.ca/taskdoctor.ai) para guiar estilo/fidelidad de marca."
+                    ),
+                },
+            },
+            "required": ["prompt", "nombre_salida"],
+        },
+    },
 ]
 
 TOOLS_IRREVERSIBLES: set = set()
@@ -472,11 +541,11 @@ AGENTE = Agent_0(
     nombre="Productor de reels",
     descripcion_enrutador=(
         "Úsalo SOLO cuando el usuario pida generar, producir o crear un reel, "
-        "video animado o clip para Instagram/Facebook (de las campañas de Rive "
-        "Intelligente, TaskDoctor, o de AiAssistant by InnovaMontreal / "
-        "getaiassistant.app) — no para redactar el texto de una publicación (eso "
-        "ya vive como archivos .md en el proyecto de prospección), sino "
-        "específicamente para producir el archivo de video."
+        "video animado o clip para Instagram/Facebook (del ecosistema Rive "
+        "Intelligente o de TaskDoctor, el servicio dentro de ese ecosistema) — "
+        "no para redactar el texto de una publicación (eso ya vive como "
+        "archivos .md en el proyecto de prospección), sino específicamente "
+        "para producir el archivo de video."
     ),
     system_prompt=SYSTEM_PROMPT,
     tool_schemas=TOOL_SCHEMAS,
